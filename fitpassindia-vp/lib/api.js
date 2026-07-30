@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export const API_BASE_URL = 'https://fitpass-india-production.up.railway.app';
+const API_BASE_URL = 'https://fitpass-india-app-production.up.railway.app';
 
 const TOKEN_KEY = 'fitpassindia_token';
 const USER_KEY = 'fitpassindia_user';
