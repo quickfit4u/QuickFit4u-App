@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FitPassIndia Admin — Bookings</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<script src="shared.js"></script>
+<script>
+  renderShell('bookings.html');
+  setPageTitle('Bookings');
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="toolbar">
+      <input type="text" id="search" placeholder="Search by gym, member, or booking code…">
+      <input type="date" id="dateFilter">
+      <select id="statusFilter">
+        <option value="">All statuses</option>
+        <option value="pending">Pending</option>
+        <option value="confirmed">Confirmed</option>
+        <option value="checked_in">Checked in</option>
+        <option value="rejected">Rejected</option>
+        <option value="cancelled">Cancelled</option>
+      </select>
+      <button class="btn btn-ghost" id="clearDate">Clear date</button>
+    </div>
+    <div class="section">
+      <table>
+        <thead><tr><th>Code</th><th>Gym</th><th>Member</th><th>Date</th><th>Time</th><th>Status</th><th>Booked</th></tr></thead>
+        <tbody id="bookingsBody"><tr class="empty-row"><td colspan="7" class="loading">Loading…</td></tr></tbody>
+      </table>
+      <div class="pager" id="pager"></div>
+    </div>
+  `;
+
+  let page = 1;
+  let debounceTimer;
+  const search = document.getElementById('search');
+  const dateFilter = document.getElementById('dateFilter');
+  const statusFilter = document.getElementById('statusFilter');
+
+  document.getElementById('clearDate').addEventListener('click', () => {
+    dateFilter.value = '';
+    page = 1;
+    load();
+  });
+
+  async function load() {
+    const body = document.getElementById('bookingsBody');
+    body.innerHTML = `<tr class="empty-row"><td colspan="7" class="loading">Loading…</td></tr>`;
+    try {
+      const params = new URLSearchParams({ page });
+      if (search.value.trim()) params.set('search', search.value.trim());
+      if (dateFilter.value) params.set('date', dateFilter.value);
+      if (statusFilter.value) params.set('status', statusFilter.value);
+
+      const data = await apiRequest('/api/admin/bookings?' + params.toString());
+      if (!data) return;
+
+      if (data.bookings.length === 0) {
+        body.innerHTML = `<tr class="empty-row"><td colspan="7">No bookings match.</td></tr>`;
+      } else {
+        body.innerHTML = data.bookings
+          .map(
+            (b) => `<tr>
+              <td>${escapeHtml(b.bookingCode)}</td>
+              <td>${escapeHtml(b.gymName)}</td>
+              <td>${escapeHtml(b.memberName)}<br><span style="color:var(--ink-soft);font-size:11.5px;">${escapeHtml(b.memberEmail)}</span></td>
+              <td>${escapeHtml(b.date)}</td>
+              <td>${escapeHtml(b.hourLabel)}</td>
+              <td><span class="pill pill-${escapeHtml(b.status)}">${escapeHtml(b.status)}</span></td>
+              <td>${formatDateTime(b.createdAt)}</td>
+            </tr>`
+          )
+          .join('');
+      }
+
+      const totalPages = Math.max(1, Math.ceil(data.total / data.pageSize));
+      document.getElementById('pager').innerHTML = `
+        <button id="prevBtn" ${page <= 1 ? 'disabled' : ''}>‹ Prev</button>
+        <span>Page ${page} of ${totalPages} (${data.total} bookings)</span>
+        <button id="nextBtn" ${page >= totalPages ? 'disabled' : ''}>Next ›</button>
+      `;
+      document.getElementById('prevBtn')?.addEventListener('click', () => { page--; load(); });
+      document.getElementById('nextBtn')?.addEventListener('click', () => { page++; load(); });
+    } catch (e) {
+      body.innerHTML = `<tr class="empty-row"><td colspan="7">${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  search.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => { page = 1; load(); }, 350);
+  });
+  dateFilter.addEventListener('change', () => { page = 1; load(); });
+  statusFilter.addEventListener('change', () => { page = 1; load(); });
+
+  load();
+</script>
+</body>
+</html>

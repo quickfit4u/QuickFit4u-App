@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FitPass India Admin — Reviews</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<script src="shared.js"></script>
+<script>
+  renderShell('reviews.html');
+  setPageTitle('Reviews');
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="toolbar">
+      <input type="text" id="search" placeholder="Search by gym, member, or review text…">
+    </div>
+    <div class="section">
+      <table>
+        <thead><tr><th>Gym</th><th>Member</th><th>Rating</th><th>Review</th><th>Posted</th><th></th></tr></thead>
+        <tbody id="reviewsBody"><tr class="empty-row"><td colspan="6" class="loading">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  `;
+
+  let debounceTimer;
+  const search = document.getElementById('search');
+
+  async function load() {
+    const body = document.getElementById('reviewsBody');
+    body.innerHTML = `<tr class="empty-row"><td colspan="6" class="loading">Loading…</td></tr>`;
+    try {
+      const params = new URLSearchParams();
+      if (search.value.trim()) params.set('search', search.value.trim());
+
+      const data = await apiRequest('/api/admin/reviews?' + params.toString());
+      if (!data) return;
+
+      if (data.reviews.length === 0) {
+        body.innerHTML = `<tr class="empty-row"><td colspan="6">No reviews match.</td></tr>`;
+        return;
+      }
+
+      body.innerHTML = data.reviews
+        .map(
+          (r) => `<tr>
+            <td>${escapeHtml(r.gymName)}</td>
+            <td>${escapeHtml(r.memberName)}</td>
+            <td>${'★'.repeat(r.rating)}${'☆'.repeat(5 - r.rating)}</td>
+            <td style="max-width:320px;">${escapeHtml(r.text || '—')}</td>
+            <td>${formatDateTime(r.createdAt)}</td>
+            <td><button class="btn btn-danger" data-id="${r.id}">Remove</button></td>
+          </tr>`
+        )
+        .join('');
+
+      document.querySelectorAll('button[data-id]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Remove this review? This cannot be undone.')) return;
+          btn.disabled = true;
+          try {
+            await apiRequest(`/api/admin/reviews/${btn.dataset.id}`, { method: 'DELETE' });
+            load();
+          } catch (e) {
+            alert(e.message);
+            btn.disabled = false;
+          }
+        });
+      });
+    } catch (e) {
+      body.innerHTML = `<tr class="empty-row"><td colspan="6">${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  search.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(load, 350);
+  });
+
+  load();
+</script>
+</body>
+</html>

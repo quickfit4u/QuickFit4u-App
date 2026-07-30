@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FitPass India Admin — Dashboard</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<script src="shared.js"></script>
+<script>
+  renderShell('dashboard.html');
+  setPageTitle('Dashboard');
+
+  document.getElementById('mainContent').innerHTML = `
+    <div id="statsGrid" class="stats-grid"><div class="loading">Loading stats…</div></div>
+    <div class="section">
+      <div class="section-head">
+        <h2>Today's Bookings</h2>
+        <a href="bookings.html" class="btn btn-ghost" style="text-decoration:none;">View all bookings →</a>
+      </div>
+      <table>
+        <thead><tr><th>Time</th><th>Gym</th><th>Member</th><th>Status</th></tr></thead>
+        <tbody id="bookingsBody"><tr class="empty-row"><td colspan="4" class="loading">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  `;
+
+  async function loadStats() {
+    const grid = document.getElementById('statsGrid');
+    try {
+      const s = await apiRequest('/api/admin/stats');
+      if (!s) return;
+      const cards = [
+        ['Total Users', s.totalUsers],
+        ['Members', s.totalMembers],
+        ['Gym Owners', s.totalOwners],
+        ['Total Gyms', s.totalGyms],
+        ['Live Gyms', s.liveGyms],
+        ['Pending Gyms', s.pendingGyms],
+        ['Suspended Gyms', s.suspendedGyms],
+        ['Total Reviews', s.totalReviews],
+        ["Today's Bookings", s.todaysBookings],
+      ];
+      grid.innerHTML = cards
+        .map(([label, value]) => `<div class="stat-card"><div class="stat-value">${value}</div><div class="stat-label">${label}</div></div>`)
+        .join('');
+    } catch (e) {
+      grid.innerHTML = `<div class="error-banner" style="grid-column:1/-1;">${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  async function loadTodayBookings() {
+    const body = document.getElementById('bookingsBody');
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const data = await apiRequest('/api/admin/bookings/today?date=' + today);
+      if (!data) return;
+      if (data.bookings.length === 0) {
+        body.innerHTML = `<tr class="empty-row"><td colspan="4">No bookings for today yet.</td></tr>`;
+        return;
+      }
+      body.innerHTML = data.bookings
+        .map(
+          (b) => `<tr>
+            <td>${escapeHtml(b.hourLabel)}</td>
+            <td>${escapeHtml(b.gymName)}</td>
+            <td>${escapeHtml(b.memberName)}</td>
+            <td><span class="pill pill-${escapeHtml(b.status)}">${escapeHtml(b.status)}</span></td>
+          </tr>`
+        )
+        .join('');
+    } catch (e) {
+      body.innerHTML = `<tr class="empty-row"><td colspan="4">${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  loadStats();
+  loadTodayBookings();
+</script>
+</body>
+</html>
