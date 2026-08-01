@@ -1,9 +1,5 @@
 const nodemailer = require('nodemailer');
 
-// Works with any SMTP provider — Gmail (with an App Password) is easiest to
-// test with. For real production sending volume, swap the env vars for a
-// transactional email service (Brevo, SendGrid, AWS SES all have free tiers)
-// — no code change needed, just different SMTP_HOST/PORT/USER/PASS.
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: Number(process.env.SMTP_PORT || 587),
@@ -12,6 +8,12 @@ const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
+  // Fail fast instead of hanging the whole request if SMTP is unreachable
+  // or the credentials are rejected — without these, a broken mail server
+  // can leave signup/login stuck "loading" for minutes before timing out.
+  connectionTimeout: 10000, // 10s to establish the connection
+  greetingTimeout: 10000,   // 10s to get the server's initial greeting
+  socketTimeout: 15000,     // 15s of inactivity on the socket
 });
 
 async function sendOtpEmail(toEmail, code, purpose) {
