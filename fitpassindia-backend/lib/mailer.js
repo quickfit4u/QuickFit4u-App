@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const dns = require('dns');
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
@@ -8,10 +9,14 @@ const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
+  
   family: 4,
-  connectionTimeout: 10000, 
-  greetingTimeout: 10000,   
-  socketTimeout: 15000,     
+  lookup: (hostname, options, callback) => {
+    dns.lookup(hostname, { family: 4 }, callback);
+  },
+  connectionTimeout: 10000, // 10s to establish the connection
+  greetingTimeout: 10000,   // 10s to get the server's initial greeting
+  socketTimeout: 15000,     // 15s of inactivity on the socket
 });
 
 async function sendOtpEmail(toEmail, code, purpose) {
