@@ -1,19 +1,28 @@
 {
   "expo": {
     "name": "fitpassindia-vp",
-    "slug": "fitpasindia-vp",
+    "slug": "fitpassindia-vp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.fitpassindia.app",
       "infoPlist": {
         "NSCameraUsageDescription": "FitPass India uses your camera to scan QR codes for gym check-in."
       }
     },
     "android": {
-      "permissions": ["CAMERA", "ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"],
+      "package": "com.fitpassindia.app",
+      "versionCode": 1,
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -32,6 +41,11 @@
     ],
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "a1a92968-2864-492c-ba51-88633e7e4398"
+      }
     }
   }
 }

@@ -1,11 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_BASE_URL = 'https://fitpass-india-app-production.up.railway.app';
+const API_BASE_URL = 'https://api.quickfit4u.com';
 
 const TOKEN_KEY = 'fitpassindia_token';
 const USER_KEY = 'fitpassindia_user';
 
 async function request(path, { method = 'GET', body, auth = false } = {}) {
+  // TEMPORARY DEBUG LOG — remove 
+  console.log('🔵 API_BASE_URL is:', API_BASE_URL, '| calling:', path);
+
   const headers = { 'Content-Type': 'application/json' };
   if (auth) {
     const token = await AsyncStorage.getItem(TOKEN_KEY);
@@ -20,6 +23,7 @@ async function request(path, { method = 'GET', body, auth = false } = {}) {
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch (e) {
+    console.log('🔴 fetch() threw:', e.message);
     throw new Error(
       "Could not reach the server. Check that your backend is running and that API_BASE_URL in lib/api.js matches your laptop's IP."
     );
@@ -93,8 +97,6 @@ export async function getMe() {
   return data.user;
 }
 
-// Updates name/phone/gender/address/avatar. Pass only the fields you want to
-// change — omitted fields are left as-is on the server.
 export async function updateProfile(fields) {
   const data = await request('/api/auth/me', { method: 'PUT', auth: true, body: fields });
   await AsyncStorage.setItem(USER_KEY, JSON.stringify(data.user));
@@ -105,8 +107,6 @@ export async function logout() {
   await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
 }
 
-// Permanently deletes the account and all of its data (bookings, reviews,
-// and — for owners — their gym, its slots, and its bookings).
 export async function deleteAccount() {
   const data = await request('/api/auth/me', { method: 'DELETE', auth: true });
   await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
@@ -115,13 +115,7 @@ export async function deleteAccount() {
 
 // ---------- Member: browse + book ----------
 
-// `options` (all optional):
-//   city, search, minPrice, maxPrice, minRating,
-//   facilities (array of tag strings, e.g. ['AC','Parking']),
-//   ac, personalTrainer, parking, shower, femaleFriendly, openNow (booleans),
-//   lat, lng, maxDistanceKm, sortBy ('distance' | 'price' | 'rating')
 export async function fetchGyms(options) {
-  // Backward compatible: fetchGyms('Bengaluru') still works as a city filter.
   const opts = typeof options === 'string' ? { city: options } : (options || {});
   const params = new URLSearchParams();
   if (opts.city) params.set('city', opts.city);
