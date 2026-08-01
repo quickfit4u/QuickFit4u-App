@@ -25,6 +25,12 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Lets admin.quickfit4u.com (or any bare domain pointed at this service)
+// land straight on the admin login instead of a 404 or needing
+// /admin/login.html typed out. Harmless for the API domain too, since
+// nothing else uses the bare "/" path.
+app.get('/', (req, res) => res.redirect('/admin/login.html'));
+
 app.use('/api/auth', authRoutes);
 app.use('/api/gyms', gymRoutes);
 app.use('/api/bookings', bookingRoutes);
