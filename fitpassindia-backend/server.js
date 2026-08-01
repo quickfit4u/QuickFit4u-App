@@ -1,4 +1,12 @@
 require('dotenv').config();
+const dns = require('dns');
+// Railway's containers (and many cloud hosts) don't have outbound IPv6
+// routing. Node resolves hostnames like smtp.gmail.com to both an IPv4 and
+// IPv6 address and tries IPv6 first by default — which fails with
+// ENETUNREACH here. This forces IPv4 first for every outbound connection in
+// the whole app (SMTP, Razorpay's fetch calls, etc.), not just one of them.
+dns.setDefaultResultOrder('ipv4first');
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
