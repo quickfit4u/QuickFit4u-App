@@ -8,12 +8,10 @@ const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
-  // Fail fast instead of hanging the whole request if SMTP is unreachable
-  // or the credentials are rejected — without these, a broken mail server
-  // can leave signup/login stuck "loading" for minutes before timing out.
-  connectionTimeout: 10000, // 10s to establish the connection
-  greetingTimeout: 10000,   // 10s to get the server's initial greeting
-  socketTimeout: 15000,     // 15s of inactivity on the socket
+  family: 4,
+  connectionTimeout: 10000, 
+  greetingTimeout: 10000,   
+  socketTimeout: 15000,     
 });
 
 async function sendOtpEmail(toEmail, code, purpose) {
