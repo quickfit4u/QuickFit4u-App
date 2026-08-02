@@ -7,7 +7,7 @@ const USER_KEY = 'quickfit4u_user';
 
 async function request(path, { method = 'GET', body, auth = false } = {}) {
 
-  console.log('🔵 API_BASE_URL is:', API_BASE_URL, '| calling:', path);
+
 
   const headers = { 'Content-Type': 'application/json' };
   if (auth) {
@@ -23,7 +23,7 @@ async function request(path, { method = 'GET', body, auth = false } = {}) {
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch (e) {
-    console.log('🔴 fetch() threw:', e.message);
+
     throw new Error(
       "Could not reach the server. Check that your backend is running and that API_BASE_URL in lib/api.js matches your laptop's IP."
     );
