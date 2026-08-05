@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QuickFit4u Admin — Users</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<script src="shared.js"></script>
+<script>
+  renderShell('users.html');
+  setPageTitle('Users');
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="toolbar">
+      <input type="text" id="search" placeholder="Search by name, email, or phone…">
+      <select id="roleFilter">
+        <option value="">All roles</option>
+        <option value="member">Members</option>
+        <option value="owner">Gym Owners</option>
+      </select>
+    </div>
+    <div class="section">
+      <table>
+        <thead><tr><th>Name</th><th>Contact</th><th>Role</th><th>Gym</th><th>Joined</th></tr></thead>
+        <tbody id="usersBody"><tr class="empty-row"><td colspan="5" class="loading">Loading…</td></tr></tbody>
+      </table>
+      <div class="pager" id="pager"></div>
+    </div>
+  `;
+
+  let page = 1;
+  const search = document.getElementById('search');
+  const roleFilter = document.getElementById('roleFilter');
+  let debounceTimer;
+
+  async function load() {
+    const body = document.getElementById('usersBody');
+    body.innerHTML = `<tr class="empty-row"><td colspan="5" class="loading">Loading…</td></tr>`;
+    try {
+      const params = new URLSearchParams({ page });
+      if (search.value.trim()) params.set('search', search.value.trim());
+      if (roleFilter.value) params.set('role', roleFilter.value);
+
+      const data = await apiRequest('/api/admin/users?' + params.toString());
+      if (!data) return;
+
+      if (data.users.length === 0) {
+        body.innerHTML = `<tr class="empty-row"><td colspan="5">No users match.</td></tr>`;
+      } else {
+        body.innerHTML = data.users
+          .map(
+            (u) => `<tr>
+              <td><strong>${escapeHtml(u.name)}</strong>${u.gender ? '<br><span style="color:var(--ink-soft);font-size:11.5px;">' + escapeHtml(u.gender) + '</span>' : ''}</td>
+              <td>${escapeHtml(u.email)}${u.phone ? '<br><span style="color:var(--ink-soft);font-size:11.5px;">' + escapeHtml(u.phone) + '</span>' : ''}</td>
+              <td><span class="pill pill-${u.role}">${u.role}</span></td>
+              <td>${u.gymName ? escapeHtml(u.gymName) : '—'}</td>
+              <td>${formatDateTime(u.createdAt)}</td>
+            </tr>`
+          )
+          .join('');
+      }
+
+      const totalPages = Math.max(1, Math.ceil(data.total / data.pageSize));
+      document.getElementById('pager').innerHTML = `
+        <button id="prevBtn" ${page <= 1 ? 'disabled' : ''}>‹ Prev</button>
+        <span>Page ${page} of ${totalPages} (${data.total} users)</span>
+        <button id="nextBtn" ${page >= totalPages ? 'disabled' : ''}>Next ›</button>
+      `;
+      document.getElementById('prevBtn')?.addEventListener('click', () => { page--; load(); });
+      document.getElementById('nextBtn')?.addEventListener('click', () => { page++; load(); });
+    } catch (e) {
+      body.innerHTML = `<tr class="empty-row"><td colspan="5">${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  search.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => { page = 1; load(); }, 350);
+  });
+  roleFilter.addEventListener('change', () => { page = 1; load(); });
+
+  load();
+</script>
+</body>
+</html>

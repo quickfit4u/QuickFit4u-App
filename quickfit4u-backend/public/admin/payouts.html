@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title> Admin — Payouts</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<script src="shared.js"></script>
+<script>
+  renderShell('payouts.html');
+  setPageTitle('Payouts');
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="section" style="margin-bottom:16px;">
+      <p style="color:var(--ink-soft);font-size:13px;line-height:1.5;margin:0;">
+        No live bank-transfer API is wired up yet (that needs RazorpayX Route + business KYC on the Razorpay
+        account) — this is a manual settlement workflow. Send the money yourself via the bank/UPI details shown,
+        then click "Mark as Paid" so the same revenue isn't shown as pending again.
+      </p>
+    </div>
+
+    <div class="section">
+      <h2 style="margin:0 0 12px;font-size:15px;">Pending Payouts</h2>
+      <table>
+        <thead><tr><th>Gym</th><th>Owner</th><th>Payout details</th><th>Pending amount</th><th></th></tr></thead>
+        <tbody id="pendingBody"><tr class="empty-row"><td colspan="5" class="loading">Loading…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="section" style="margin-top:24px;">
+      <h2 style="margin:0 0 12px;font-size:15px;">Payout History</h2>
+      <table>
+        <thead><tr><th>Gym</th><th>Amount</th><th>Period</th><th>Note</th><th>Settled</th></tr></thead>
+        <tbody id="historyBody"><tr class="empty-row"><td colspan="5" class="loading">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  `;
+
+  function formatBankDetails(bd) {
+    if (!bd) return '<span style="color:var(--ink-soft);">Not registered yet</span>';
+    const parts = [];
+    if (bd.accountHolder && bd.accountNumber && bd.ifsc) {
+      parts.push(`${escapeHtml(bd.accountHolder)}<br>A/C ${escapeHtml(bd.accountNumber)} · ${escapeHtml(bd.ifsc)}`);
+    }
+    if (bd.upiId) parts.push(`UPI: ${escapeHtml(bd.upiId)}`);
+    return parts.join('<br>') || '<span style="color:var(--ink-soft);">Not registered yet</span>';
+  }
+
+  async function loadPending() {
+    const body = document.getElementById('pendingBody');
+    body.innerHTML = `<tr class="empty-row"><td colspan="5" class="loading">Loading…</td></tr>`;
+    try {
+      const data = await apiRequest('/api/admin/payouts');
+      if (!data) return;
+
+      if (data.payouts.length === 0) {
+        body.innerHTML = `<tr class="empty-row"><td colspan="5">No pending payouts right now.</td></tr>`;
+        return;
+      }
+
+      body.innerHTML = data.payouts
+        .map(
+          (p) => `<tr>
+            <td><strong>${escapeHtml(p.gymName)}</strong></td>
+            <td>${escapeHtml(p.ownerName)}<br><span style="color:var(--ink-soft);font-size:11.5px;">${escapeHtml(p.ownerEmail)}</span></td>
+            <td style="font-size:12.5px;">${formatBankDetails(p.bankDetails)}</td>
+            <td><strong>₹${p.pendingRupees}</strong></td>
+            <td><button class="btn btn-primary" data-gym-id="${p.gymId}" ${!p.bankDetails ? 'disabled title="No payout details on file yet"' : ''}>Mark as Paid</button></td>
+          </tr>`
+        )
+        .join('');
+
+      document.querySelectorAll('button[data-gym-id]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const amount = btn.closest('tr').querySelector('td:nth-child(4)').textContent;
+          if (!confirm(`Confirm you've already sent ${amount} to this gym? This just records it as settled.`)) return;
+          btn.disabled = true;
+          try {
+            await apiRequest(`/api/admin/payouts/${btn.dataset.gymId}/settle`, { method: 'POST', body: {} });
+            loadPending();
+            loadHistory();
+          } catch (e) {
+            alert(e.message);
+            btn.disabled = false;
+          }
+        });
+      });
+    } catch (e) {
+      body.innerHTML = `<tr class="empty-row"><td colspan="5">${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  async function loadHistory() {
+    const body = document.getElementById('historyBody');
+    body.innerHTML = `<tr class="empty-row"><td colspan="5" class="loading">Loading…</td></tr>`;
+    try {
+      const data = await apiRequest('/api/admin/payouts/history');
+      if (!data) return;
+
+      if (data.payouts.length === 0) {
+        body.innerHTML = `<tr class="empty-row"><td colspan="5">No payouts settled yet.</td></tr>`;
+        return;
+      }
+
+      body.innerHTML = data.payouts
+        .map(
+          (p) => `<tr>
+            <td>${escapeHtml(p.gymName)}</td>
+            <td>₹${p.amountRupees}</td>
+            <td style="font-size:12px;">${p.periodStart ? formatDateTime(p.periodStart) + ' → ' : 'start → '}${formatDateTime(p.periodEnd)}</td>
+            <td>${escapeHtml(p.note || '—')}</td>
+            <td>${formatDateTime(p.createdAt)}</td>
+          </tr>`
+        )
+        .join('');
+    } catch (e) {
+      body.innerHTML = `<tr class="empty-row"><td colspan="5">${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  loadPending();
+  loadHistory();
+</script>
+</body>
+</html>
