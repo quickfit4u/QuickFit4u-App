@@ -295,6 +295,7 @@ export default function OwnerHomeScreen({ user, gym, onNavigate, onLogout, onAcc
             />
             <MenuItem label="Booked Slots" onPress={() => { setMenuOpen(false); onNavigate('ownerSlots'); }} />
             <MenuItem label="Previous Customers" onPress={() => { setMenuOpen(false); onNavigate('ownerCustomers'); }} />
+            <MenuItem label="Payout / Bank Details" onPress={() => { setMenuOpen(false); onNavigate('ownerBankDetails'); }} />
             <MenuItem label="Settings" onPress={() => { setMenuOpen(false); onNavigate('settings'); }} />
             <MenuItem label="Privacy Policy" onPress={() => { setMenuOpen(false); onNavigate('privacyPolicy'); }} />
             <MenuItem label="Terms & Conditions" onPress={() => { setMenuOpen(false); onNavigate('termsConditions'); }} />

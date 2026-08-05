@@ -5,11 +5,11 @@ import Svg, { Circle, Path, Rect, G } from 'react-native-svg';
 const { width } = Dimensions.get('window');
 
 const COLORS = {
-  cream: '#F5F1E6',
-  ink: '#2B3328',
-  sage: '#7A9166',
-  sageDark: '#5E7A4E',
-  gold: '#C9A227',
+  cream: '#F7E7CE',
+  ink: '#0A1A26',
+  sage: '#6B9E1E',
+  sageDark: '#4C7A16',
+  gold: '#6B9E1E',
 };
 
 export default function SplashScreen({ onFinish }) {
@@ -32,9 +32,9 @@ export default function SplashScreen({ onFinish }) {
   return (
     <View style={styles.container}>
       <Animated.View style={[styles.content, { opacity: fade }]}>
-        {/* Logo mark — your actual artwork, recolored pixel-for-pixel to the app palette */}
+        {/* Logo mark — the new QuickFit4u artwork (QR mark + lifter + wordmark) */}
         <Image
-          source={require('../assets/logo-fitpass-india.png')}
+          source={require('../assets/logo-quickfit4u.png')}
           style={styles.logoImage}
           resizeMode="contain"
         />
@@ -118,8 +118,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   logoImage: {
-    width: 260,
-    height: 212,
+    width: 280,
+    height: 197,
     marginBottom: 0,
   },
   divider: {
