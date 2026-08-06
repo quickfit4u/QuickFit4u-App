@@ -118,8 +118,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   logoImage: {
-    width: 280,
-    height: 197,
+    width: 200,
+    height: 141,
     marginBottom: 0,
   },
   divider: {

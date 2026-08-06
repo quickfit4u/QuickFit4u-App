@@ -40,7 +40,8 @@ const QUOTES = [
 function getWeekStrip() {
   const days = [];
   const today = new Date();
-  const dayIndex = (today.getDay() + 6) % 7; 
+  today.setHours(0, 0, 0, 0);
+  const dayIndex = (today.getDay() + 6) % 7;
   const monday = new Date(today);
   monday.setDate(today.getDate() - dayIndex);
 
@@ -48,6 +49,7 @@ function getWeekStrip() {
   for (let i = 0; i < 7; i++) {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
+    if (d < today) continue; // don't show past days of this week
     days.push({
       label: labels[i],
       date: d.getDate(),

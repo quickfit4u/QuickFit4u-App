@@ -106,6 +106,19 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS coupons (
+    id TEXT PRIMARY KEY,
+    code TEXT UNIQUE NOT NULL,             -- entered by member at checkout, case-insensitive
+    type TEXT NOT NULL CHECK (type IN ('percent', 'flat')),
+    value REAL NOT NULL,                   -- percent (0-100) or flat rupees off, depending on type
+    max_uses INTEGER,                      -- NULL = unlimited
+    used_count INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
+    expires_at TEXT,                       -- NULL = never expires
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_by TEXT REFERENCES users(id)
+  );
 `);
 
 module.exports = db;
@@ -367,6 +380,8 @@ for (const [col, def] of [
   ['reminder_2h_sent', 'INTEGER NOT NULL DEFAULT 0'],
   ['reminder_30m_sent', 'INTEGER NOT NULL DEFAULT 0'],
   ['rate_prompt_sent', 'INTEGER NOT NULL DEFAULT 0'],
+  ['coupon_code', 'TEXT'],
+  ['discount_rupees', 'INTEGER NOT NULL DEFAULT 0'],
 ]) {
   try {
     db.exec(`ALTER TABLE bookings ADD COLUMN ${col} ${def}`);

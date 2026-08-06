@@ -67,10 +67,24 @@ async function generateAndSendBookingQr(booking, gym, slot) {
 
 
 router.post('/create-order', requireAuth, requireRole('member'), async (req, res) => {
-  const { slotId, note } = req.body || {};
+  const { slotId, note, couponCode } = req.body || {};
   if (!slotId) return res.status(400).json({ error: 'slotId is required.' });
 
   releaseStalePendingPayments();
+
+  // Validate the coupon (if any) before we touch the slot, so a bad code fails fast.
+  let coupon = null;
+  if (couponCode && couponCode.trim()) {
+    coupon = db.prepare(`SELECT * FROM coupons WHERE code = ? COLLATE NOCASE`).get(couponCode.trim());
+    if (!coupon) return res.status(400).json({ error: 'That coupon code doesn\u2019t exist.' });
+    if (!coupon.active) return res.status(400).json({ error: 'This coupon is no longer active.' });
+    if (coupon.expires_at && new Date(coupon.expires_at) <= new Date()) {
+      return res.status(400).json({ error: 'This coupon has expired.' });
+    }
+    if (coupon.max_uses != null && coupon.used_count >= coupon.max_uses) {
+      return res.status(400).json({ error: 'This coupon has reached its usage limit.' });
+    }
+  }
 
   const reserve = db.transaction((slotId, userId) => {
     const slot = db.prepare('SELECT * FROM gym_slots WHERE id = ?').get(slotId);
@@ -93,15 +107,22 @@ router.post('/create-order', requireAuth, requireRole('member'), async (req, res
 
     const bookingId = uuid();
     const bookingCode = generateBookingCode();
-    const amount = gym.hourly_rate;
+    const fullAmount = gym.hourly_rate;
+
+    let discount = 0;
+    if (coupon) {
+      discount = coupon.type === 'percent' ? Math.round((fullAmount * coupon.value) / 100) : Math.round(coupon.value);
+      discount = Math.min(discount, fullAmount - 1); // always leave at least ₹1 payable
+    }
+    const amount = Math.max(1, fullAmount - discount);
 
     db.prepare('UPDATE gym_slots SET booked_count = booked_count + 1 WHERE id = ?').run(slotId);
     db.prepare(
-      `INSERT INTO bookings (id, user_id, gym_id, slot_id, booking_code, note, status, amount, payment_status)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending_payment', ?, 'unpaid')`
-    ).run(bookingId, userId, slot.gym_id, slotId, bookingCode, note || null, amount);
+      `INSERT INTO bookings (id, user_id, gym_id, slot_id, booking_code, note, status, amount, payment_status, coupon_code, discount_rupees)
+       VALUES (?, ?, ?, ?, ?, ?, 'pending_payment', ?, 'unpaid', ?, ?)`
+    ).run(bookingId, userId, slot.gym_id, slotId, bookingCode, note || null, amount, coupon ? coupon.code : null, discount);
 
-    return { bookingId, bookingCode, slot, gym, amount };
+    return { bookingId, bookingCode, slot, gym, amount, discount };
   });
 
   let held;
@@ -111,7 +132,7 @@ router.post('/create-order', requireAuth, requireRole('member'), async (req, res
     return res.status(e.status || 500).json({ error: e.message || 'Could not reserve this slot.' });
   }
 
-  const { bookingId, bookingCode, slot, gym, amount } = held;
+  const { bookingId, bookingCode, slot, gym, amount, discount } = held;
 
   try {
     const order = await razorpay.createOrder({
@@ -131,6 +152,7 @@ router.post('/create-order', requireAuth, requireRole('member'), async (req, res
       bookingCode,
       orderId: order.id,
       amount,
+      discountRupees: discount,
       currency: order.currency || 'INR',
       keyId: razorpay.KEY_ID,
       gymName: gym.name,
@@ -190,6 +212,10 @@ router.post('/verify-payment', requireAuth, requireRole('member'), async (req, r
   db.prepare(
     `UPDATE payments SET status = 'paid', razorpay_payment_id = ?, razorpay_signature = ?, updated_at = datetime('now') WHERE booking_id = ?`
   ).run(razorpay_payment_id, razorpay_signature, bookingId);
+
+  if (booking.coupon_code) {
+    db.prepare(`UPDATE coupons SET used_count = used_count + 1 WHERE code = ? COLLATE NOCASE`).run(booking.coupon_code);
+  }
 
   const qrDataUrl = await generateAndSendBookingQr(booking, gym, slot);
 

@@ -5,13 +5,15 @@ const NAV_ITEMS = [
   { href: 'users.html', label: 'Users' },
   { href: 'gyms.html', label: 'Gym Partners' },
   { href: 'bookings.html', label: 'Bookings' },
+  { href: 'payments.html', label: 'Payments' },
   { href: 'payouts.html', label: 'Payouts' },
+  { href: 'coupons.html', label: 'Coupons' },
   { href: 'reviews.html', label: 'Reviews' },
   { href: 'notifications.html', label: 'Notifications' },
   { href: 'analytics.html', label: 'Analytics' },
 ];
 
-const COMING_SOON_ITEMS = ['Payments', 'Complaints', 'Coupons', 'Support Tickets'];
+const COMING_SOON_ITEMS = ['Complaints', 'Support Tickets'];
 
 function requireAdminAuth() {
   const token = localStorage.getItem('quickfit4u_admin_token');

@@ -319,7 +319,7 @@ router.get('/mine/dashboard', requireAuth, requireRole('owner'), (req, res) => {
          WHERE s.gym_id = ? AND s.date >= ? AND s.date <= ? AND b.payment_status = 'paid'`
       )
       .get(gym.id, sinceDate, today);
-    return Math.round((row.total || 0) / 100);
+    return Math.round(row.total || 0);
   }
 
   const todayRevenue = revenueSince(today);

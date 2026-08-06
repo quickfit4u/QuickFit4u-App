@@ -141,7 +141,7 @@ router.get('/gyms', (req, res) => {
       suspended: !!row.suspended,
       status: row.suspended ? 'suspended' : row.agreement_signed_at ? 'live' : 'pending',
       bankDetailsOnFile: !!row.bank_details_submitted_at,
-      pendingPayoutRupees: Math.round(pendingPayout / 100),
+      pendingPayoutRupees: Math.round(pendingPayout),
       createdAt: row.created_at,
     };
   });
@@ -208,6 +208,153 @@ router.get('/bookings', (req, res) => {
       createdAt: r.created_at,
     })),
   });
+});
+
+
+// ---- Payments: platform-wide transaction log (every Razorpay attempt, not just settled payouts) ----
+router.get('/payments', (req, res) => {
+  const { date, status, search } = req.query;
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const pageSize = 30;
+
+  let sql = `SELECT p.id, p.razorpay_order_id, p.razorpay_payment_id, p.amount, p.currency,
+                    p.status, p.created_at, p.updated_at,
+                    b.booking_code, g.name AS gym_name, u.name AS member_name, u.email AS member_email
+             FROM payments p
+             JOIN bookings b ON b.id = p.booking_id
+             JOIN gyms g ON g.id = b.gym_id
+             JOIN users u ON u.id = b.user_id
+             WHERE 1=1`;
+  const params = [];
+
+  if (date) {
+    sql += ` AND date(p.created_at) = ?`;
+    params.push(date);
+  }
+  if (status && ['created', 'paid', 'failed'].includes(status)) {
+    sql += ` AND p.status = ?`;
+    params.push(status);
+  }
+  if (search && search.trim()) {
+    sql += ` AND (g.name LIKE ? COLLATE NOCASE OR u.name LIKE ? COLLATE NOCASE OR b.booking_code LIKE ? COLLATE NOCASE OR p.razorpay_payment_id LIKE ? COLLATE NOCASE)`;
+    const term = `%${search.trim()}%`;
+    params.push(term, term, term, term);
+  }
+
+  const countRow = db.prepare(`SELECT COUNT(*) AS c FROM (${sql})`).get(...params);
+
+  sql += ` ORDER BY p.created_at DESC LIMIT ? OFFSET ?`;
+  const rows = db.prepare(sql).all(...params, pageSize, (page - 1) * pageSize);
+
+  // Separate, unfiltered totals so the summary cards stay stable while paging/searching.
+  const paidTotal = db.prepare(`SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE status = 'paid'`).get().total;
+  const paidCount = db.prepare(`SELECT COUNT(*) AS c FROM payments WHERE status = 'paid'`).get().c;
+  const failedCount = db.prepare(`SELECT COUNT(*) AS c FROM payments WHERE status = 'failed'`).get().c;
+
+  res.json({
+    total: countRow.c,
+    page,
+    pageSize,
+    summary: {
+      totalCollectedRupees: Math.round(paidTotal),
+      paidCount,
+      failedCount,
+    },
+    payments: rows.map((r) => ({
+      id: r.id,
+      bookingCode: r.booking_code,
+      gymName: r.gym_name,
+      memberName: r.member_name,
+      memberEmail: r.member_email,
+      amountRupees: Math.round(r.amount),
+      currency: r.currency,
+      status: r.status,
+      razorpayOrderId: r.razorpay_order_id,
+      razorpayPaymentId: r.razorpay_payment_id,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    })),
+  });
+});
+
+
+// ---- Coupons: discount codes members can apply at checkout ----
+router.get('/coupons', (req, res) => {
+  const { search, status } = req.query;
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const pageSize = 30;
+
+  let sql = `SELECT id, code, type, value, max_uses, used_count, active, expires_at, created_at FROM coupons WHERE 1=1`;
+  const params = [];
+
+  if (search && search.trim()) {
+    sql += ` AND code LIKE ? COLLATE NOCASE`;
+    params.push(`%${search.trim()}%`);
+  }
+  if (status === 'active') sql += ` AND active = 1 AND (expires_at IS NULL OR expires_at > datetime('now'))`;
+  if (status === 'inactive') sql += ` AND active = 0`;
+  if (status === 'expired') sql += ` AND expires_at IS NOT NULL AND expires_at <= datetime('now')`;
+
+  const countRow = db.prepare(`SELECT COUNT(*) AS c FROM (${sql})`).get(...params);
+  sql += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+  const rows = db.prepare(sql).all(...params, pageSize, (page - 1) * pageSize);
+
+  res.json({
+    total: countRow.c,
+    page,
+    pageSize,
+    coupons: rows.map((r) => ({
+      id: r.id,
+      code: r.code,
+      type: r.type,
+      value: r.value,
+      maxUses: r.max_uses,
+      usedCount: r.used_count,
+      active: !!r.active,
+      expiresAt: r.expires_at,
+      createdAt: r.created_at,
+    })),
+  });
+});
+
+router.post('/coupons', (req, res) => {
+  const { code, type, value, maxUses, expiresAt } = req.body || {};
+
+  if (!code || !code.trim()) return res.status(400).json({ error: 'Code is required.' });
+  if (!['percent', 'flat'].includes(type)) return res.status(400).json({ error: 'Type must be percent or flat.' });
+  const numValue = Number(value);
+  if (!Number.isFinite(numValue) || numValue <= 0) return res.status(400).json({ error: 'Value must be a positive number.' });
+  if (type === 'percent' && numValue > 100) return res.status(400).json({ error: 'Percent value cannot exceed 100.' });
+
+  const normalizedCode = code.trim().toUpperCase();
+  const existing = db.prepare(`SELECT id FROM coupons WHERE code = ? COLLATE NOCASE`).get(normalizedCode);
+  if (existing) return res.status(409).json({ error: 'A coupon with this code already exists.' });
+
+  const id = uuid();
+  db.prepare(
+    `INSERT INTO coupons (id, code, type, value, max_uses, expires_at, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, normalizedCode, type, numValue, maxUses ? Number(maxUses) : null, expiresAt || null, req.user.id);
+
+  res.json({ ok: true, id });
+});
+
+router.patch('/coupons/:id', (req, res) => {
+  const coupon = db.prepare(`SELECT id FROM coupons WHERE id = ?`).get(req.params.id);
+  if (!coupon) return res.status(404).json({ error: 'Coupon not found.' });
+
+  if (typeof req.body?.active === 'boolean') {
+    db.prepare(`UPDATE coupons SET active = ? WHERE id = ?`).run(req.body.active ? 1 : 0, req.params.id);
+  }
+  res.json({ ok: true });
+});
+
+router.delete('/coupons/:id', (req, res) => {
+  const coupon = db.prepare(`SELECT id FROM coupons WHERE id = ?`).get(req.params.id);
+  if (!coupon) return res.status(404).json({ error: 'Coupon not found.' });
+
+  db.prepare(`DELETE FROM coupons WHERE id = ?`).run(req.params.id);
+  res.json({ ok: true });
 });
 
 
@@ -362,7 +509,7 @@ router.get('/payouts', (req, res) => {
       gymName: g.name,
       ownerName: g.owner_name,
       ownerEmail: g.owner_email,
-      pendingRupees: Math.round(pendingPayoutFor(g.id, g.last_payout_at) / 100),
+      pendingRupees: Math.round(pendingPayoutFor(g.id, g.last_payout_at)),
       lastPayoutAt: g.last_payout_at,
       bankDetails: g.bank_details_submitted_at
         ? {
@@ -391,7 +538,7 @@ router.get('/payouts/history', (req, res) => {
     payouts: rows.map((p) => ({
       id: p.id,
       gymName: p.gym_name,
-      amountRupees: Math.round(p.amount / 100),
+      amountRupees: Math.round(p.amount),
       periodStart: p.period_start,
       periodEnd: p.period_end,
       note: p.note,
@@ -421,10 +568,10 @@ router.post('/payouts/:gymId/settle', (req, res) => {
     userId: gym.owner_id,
     type: NOTIFICATION_TYPES.PAYMENT_CREDITED,
     title: 'Payout settled',
-    body: `₹${Math.round(pending / 100)} has been sent for ${gym.name}.`,
+    body: `₹${Math.round(pending)} has been sent for ${gym.name}.`,
   });
 
-  res.json({ ok: true, amountRupees: Math.round(pending / 100) });
+  res.json({ ok: true, amountRupees: Math.round(pending) });
 });
 
 module.exports = router;

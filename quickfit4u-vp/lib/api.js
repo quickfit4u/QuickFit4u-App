@@ -151,11 +151,11 @@ export async function leaveReview(gymId, { rating, text }) {
 }
 
 
-export async function createBookingOrder(slotId, note) {
+export async function createBookingOrder(slotId, note, couponCode) {
   return request('/api/bookings/create-order', {
     method: 'POST',
     auth: true,
-    body: { slotId, note: note || undefined },
+    body: { slotId, note: note || undefined, couponCode: couponCode || undefined },
   });
  
 }

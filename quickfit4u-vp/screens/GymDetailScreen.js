@@ -64,6 +64,7 @@ export default function GymDetailScreen({ gym: gymStub, user, onBack }) {
   const [booking, setBooking] = useState(false);
   const [bookError, setBookError] = useState('');
   const [preferenceNote, setPreferenceNote] = useState('');
+  const [couponCode, setCouponCode] = useState('');
 
   const [pendingOrder, setPendingOrder] = useState(null); 
   const [checkoutVisible, setCheckoutVisible] = useState(false);
@@ -162,7 +163,7 @@ export default function GymDetailScreen({ gym: gymStub, user, onBack }) {
     setBookError('');
     setBooking(true);
     try {
-      const order = await createBookingOrder(selectedSlot.id, preferenceNote.trim());
+      const order = await createBookingOrder(selectedSlot.id, preferenceNote.trim(), couponCode.trim());
       setPendingOrder(order);
       setCheckoutVisible(true);
     } catch (e) {
@@ -187,6 +188,7 @@ export default function GymDetailScreen({ gym: gymStub, user, onBack }) {
       setConfirmVisible(true);
       setSelectedSlot(null);
       setPreferenceNote('');
+      setCouponCode('');
       const data = await fetchGymDetail(gymStub.id, days[selectedDay].full);
       setSlots(data.slots);
     } catch (e) {
@@ -388,6 +390,16 @@ export default function GymDetailScreen({ gym: gymStub, user, onBack }) {
               <Text style={styles.noteHint}>
                 Your request goes to the gym owner to confirm — you'll get a notification once they respond.
               </Text>
+
+              <Text style={[styles.reviewFormLabel, { marginTop: 14 }]}>Coupon code (optional)</Text>
+              <TextInput
+                style={styles.reviewInput}
+                placeholder="e.g. FIRST50"
+                placeholderTextColor={COLORS.inkSoft}
+                value={couponCode}
+                onChangeText={(t) => setCouponCode(t.toUpperCase())}
+                autoCapitalize="characters"
+              />
             </View>
           )}
 

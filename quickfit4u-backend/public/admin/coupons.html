@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QuickFit4u Admin — Coupons</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<script src="shared.js"></script>
+<script>
+  renderShell('coupons.html');
+  setPageTitle('Coupons');
+
+  document.getElementById('mainContent').innerHTML = `
+    <div class="section" style="margin-bottom:24px;">
+      <h3 style="margin-top:0;">Create a coupon</h3>
+      <form id="createForm" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;">
+        <div>
+          <label style="display:block;font-size:12px;color:var(--ink-soft);margin-bottom:4px;">Code</label>
+          <input type="text" id="codeInput" placeholder="e.g. FIRST50" required style="text-transform:uppercase;">
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;color:var(--ink-soft);margin-bottom:4px;">Type</label>
+          <select id="typeInput">
+            <option value="percent">% off</option>
+            <option value="flat">₹ flat off</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;color:var(--ink-soft);margin-bottom:4px;">Value</label>
+          <input type="number" id="valueInput" placeholder="e.g. 20" min="0" step="0.01" required style="width:100px;">
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;color:var(--ink-soft);margin-bottom:4px;">Max uses (optional)</label>
+          <input type="number" id="maxUsesInput" placeholder="Unlimited" min="1" style="width:120px;">
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;color:var(--ink-soft);margin-bottom:4px;">Expires (optional)</label>
+          <input type="date" id="expiresInput">
+        </div>
+        <button class="btn btn-primary" type="submit">Create coupon</button>
+      </form>
+      <div id="createError" style="color:var(--error-text);font-size:13px;margin-top:8px;"></div>
+    </div>
+
+    <div class="toolbar">
+      <input type="text" id="search" placeholder="Search by code…">
+      <select id="statusFilter">
+        <option value="">All statuses</option>
+        <option value="active">Active</option>
+        <option value="inactive">Inactive</option>
+        <option value="expired">Expired</option>
+      </select>
+    </div>
+    <div class="section">
+      <table>
+        <thead><tr><th>Code</th><th>Discount</th><th>Uses</th><th>Expires</th><th>Status</th><th>Created</th><th></th></tr></thead>
+        <tbody id="couponsBody"><tr class="empty-row"><td colspan="7" class="loading">Loading…</td></tr></tbody>
+      </table>
+      <div class="pager" id="pager"></div>
+    </div>
+  `;
+
+  let page = 1;
+  let debounceTimer;
+  const search = document.getElementById('search');
+  const statusFilter = document.getElementById('statusFilter');
+
+  function couponStatus(c) {
+    if (c.expiresAt && new Date(c.expiresAt) <= new Date()) return 'expired';
+    return c.active ? 'active' : 'inactive';
+  }
+
+  async function load() {
+    const body = document.getElementById('couponsBody');
+    body.innerHTML = `<tr class="empty-row"><td colspan="7" class="loading">Loading…</td></tr>`;
+    try {
+      const params = new URLSearchParams({ page });
+      if (search.value.trim()) params.set('search', search.value.trim());
+      if (statusFilter.value) params.set('status', statusFilter.value);
+
+      const data = await apiRequest('/api/admin/coupons?' + params.toString());
+      if (!data) return;
+
+      if (data.coupons.length === 0) {
+        body.innerHTML = `<tr class="empty-row"><td colspan="7">No coupons match.</td></tr>`;
+      } else {
+        body.innerHTML = data.coupons
+          .map((c) => {
+            const st = couponStatus(c);
+            const discount = c.type === 'percent' ? `${c.value}% off` : `₹${c.value} off`;
+            const uses = c.maxUses ? `${c.usedCount} / ${c.maxUses}` : `${c.usedCount} (unlimited)`;
+            return `<tr>
+              <td><strong>${escapeHtml(c.code)}</strong></td>
+              <td>${escapeHtml(discount)}</td>
+              <td>${escapeHtml(uses)}</td>
+              <td>${c.expiresAt ? escapeHtml(c.expiresAt.slice(0, 10)) : 'Never'}</td>
+              <td><span class="pill pill-${st === 'active' ? 'live' : st === 'expired' ? 'cancelled' : 'suspended'}">${st}</span></td>
+              <td>${formatDateTime(c.createdAt)}</td>
+              <td>
+                <button class="btn ${st === 'expired' ? 'btn-ghost' : c.active ? 'btn-danger' : 'btn-primary'}" data-id="${c.id}" data-action="${c.active ? 'deactivate' : 'activate'}" ${st === 'expired' ? 'disabled' : ''}>${c.active ? 'Deactivate' : 'Activate'}</button>
+                <button class="btn btn-ghost" data-id="${c.id}" data-action="delete">Delete</button>
+              </td>
+            </tr>`;
+          })
+          .join('');
+      }
+
+      const totalPages = Math.max(1, Math.ceil(data.total / data.pageSize));
+      document.getElementById('pager').innerHTML = `
+        <button id="prevBtn" ${page <= 1 ? 'disabled' : ''}>‹ Prev</button>
+        <span>Page ${page} of ${totalPages} (${data.total} coupons)</span>
+        <button id="nextBtn" ${page >= totalPages ? 'disabled' : ''}>Next ›</button>
+      `;
+      document.getElementById('prevBtn')?.addEventListener('click', () => { page--; load(); });
+      document.getElementById('nextBtn')?.addEventListener('click', () => { page++; load(); });
+
+      body.querySelectorAll('button[data-action]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const id = btn.dataset.id;
+          const action = btn.dataset.action;
+          btn.disabled = true;
+          try {
+            if (action === 'delete') {
+              if (!confirm('Delete this coupon permanently?')) { btn.disabled = false; return; }
+              await apiRequest(`/api/admin/coupons/${id}`, { method: 'DELETE' });
+            } else {
+              await apiRequest(`/api/admin/coupons/${id}`, { method: 'PATCH', body: { active: action === 'activate' } });
+            }
+            load();
+          } catch (e) {
+            alert(e.message);
+            btn.disabled = false;
+          }
+        });
+      });
+    } catch (e) {
+      body.innerHTML = `<tr class="empty-row"><td colspan="7">${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  search.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => { page = 1; load(); }, 350);
+  });
+  statusFilter.addEventListener('change', () => { page = 1; load(); });
+
+  document.getElementById('createForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById('createError');
+    errorEl.textContent = '';
+    const code = document.getElementById('codeInput').value.trim();
+    const type = document.getElementById('typeInput').value;
+    const value = document.getElementById('valueInput').value;
+    const maxUses = document.getElementById('maxUsesInput').value;
+    const expiresAt = document.getElementById('expiresInput').value;
+
+    try {
+      await apiRequest('/api/admin/coupons', {
+        method: 'POST',
+        body: { code, type, value, maxUses: maxUses || null, expiresAt: expiresAt || null },
+      });
+      document.getElementById('createForm').reset();
+      page = 1;
+      load();
+    } catch (e) {
+      errorEl.textContent = e.message;
+    }
+  });
+
+  load();
+</script>
+</body>
+</html>

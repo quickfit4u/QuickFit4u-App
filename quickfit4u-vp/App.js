@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { View, ActivityIndicator, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, ActivityIndicator, Alert, BackHandler } from 'react-native';
+import { registerForPushNotifications, clearPushToken } from './lib/push';
 import SplashScreen from './screens/SplashScreen';
 import AuthScreen from './screens/AuthScreen';
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
@@ -52,8 +53,57 @@ export default function App() {
 
   const homeScreenFor = () => (user?.role === 'owner' ? 'ownerHome' : user?.role === 'admin' ? 'adminHome' : 'home');
 
+  // Android hardware back button: navigate within the app instead of falling
+  // through to the OS default (which exits straight to the phone's home screen).
+  // Root/landing screens (home, ownerHome, adminHome, auth) are left unhandled
+  // so the back button behaves normally there (exits the app), which is the
+  // expected behavior on a top-level screen.
+  useEffect(() => {
+    const backTargets = {
+      gymList: 'home',
+      gymDetail: 'home',
+      myBookings: homeScreenFor(),
+      bookingDetail: 'myBookings',
+      memberScanQr: memberScanReturnScreen,
+      ownerScanQr: 'ownerHome',
+      notifications: homeScreenFor(),
+      ownerRequests: 'ownerHome',
+      profile: homeScreenFor(),
+      ownerGymProfile: 'ownerHome',
+      ownerAmenities: 'ownerGymProfile',
+      ownerBankDetails: myGym?.agreementSignedAt ? 'ownerHome' : 'ownerAmenities',
+      ownerGymView: 'ownerHome',
+      ownerSlots: 'ownerHome',
+      ownerCustomers: 'ownerHome',
+      ownerAgreement: 'ownerHome',
+      adminGyms: 'adminHome',
+      howItWorks: homeScreenFor(),
+      privacyPolicy: homeScreenFor(),
+      termsConditions: homeScreenFor(),
+      settings: homeScreenFor(),
+      forgotPassword: 'auth',
+    };
+
+    const onBackPress = () => {
+      const target = backTargets[screen];
+      if (target) {
+        setScreen(target);
+        return true; // handled — don't exit the app
+      }
+      return false; // on a root screen — let the OS handle it (exits app)
+    };
+
+    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => subscription.remove();
+  }, [screen, myGym, memberScanReturnScreen, user]);
+
   async function enterAppAs(loggedInUser) {
     setUser(loggedInUser);
+    // Fire-and-forget: get an Expo push token and send it to the backend so
+    // notify() can actually deliver on-screen/OS notifications. Without this
+    // call, notifications only ever land in the DB (visible via the bell's
+    // unread badge) and never show up as a real notification.
+    registerForPushNotifications().catch(() => {});
     if (loggedInUser.role === 'admin') {
       setScreen('adminHome');
       return;
@@ -88,6 +138,7 @@ export default function App() {
   }
 
   async function handleLogout() {
+    await clearPushToken().catch(() => {});
     await apiLogout();
     setUser(null);
     setMyGym(null);

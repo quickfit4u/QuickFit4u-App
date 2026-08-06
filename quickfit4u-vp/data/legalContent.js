@@ -26,7 +26,7 @@ export const TERMS_SECTIONS = [
   { heading: '17. Limitation of Liability', body: 'To the extent permitted by applicable law, QuickFit4u shall not be responsible for matters outside its reasonable control, including interruptions caused by technical failures, internet issues, third-party services, or events beyond reasonable control. Nothing in these Terms is intended to exclude or limit any liability that cannot legally be excluded or limited under applicable law.' },
   { heading: '18. Changes to These Terms', body: 'QuickFit4u may update these Terms & Conditions from time to time. The updated version may be published on the Platform with a revised "Last Updated" date. Your continued use of the Platform after updated Terms become effective may be subject to the updated Terms.' },
   { heading: '19. Governing Law', body: 'These Terms shall be governed by the applicable laws of India. Any dispute shall be subject to the applicable legal jurisdiction as determined under applicable law. Specific jurisdiction to be finalised after legal review.' },
-  { heading: '20. Contact Us', body: 'For questions regarding these Terms & Conditions:\n\nQuickFit4u\nEmail: [Your official email address]\nPhone: [Your official contact number]\nAddress: [Your business/registered address]' },
+  { heading: '20. Contact Us', body: 'For questions regarding these Terms & Conditions:\n\nQuickFit4u\nEmail: quickfit4u.workplace@gmail.com\nPhone: +917970791670\n' },
 ];
 
 export const TERMS_FOOTER =
@@ -63,7 +63,7 @@ export const PRIVACY_SECTIONS = [
   { heading: "10. Children's Privacy", body: 'QuickFit4u is not intended for use by individuals who are not legally permitted to use the Platform under applicable law. We do not knowingly collect personal information from children in violation of applicable laws. If you believe that a child has provided personal information to us without appropriate consent, please contact us.' },
   { heading: '11. Third-Party Services and Links', body: 'The Platform may use or link to third-party services. Third-party services may have their own privacy policies and terms. QuickFit4u is not responsible for the privacy practices of third parties outside our control. We recommend reviewing the privacy policies of third-party services before using them.' },
   { heading: '12. Changes to This Privacy Policy', body: 'We may update this Privacy Policy from time to time. When we make changes, we may update the "Last Updated" date at the top of this Privacy Policy. Your continued use of the Platform after an updated Privacy Policy becomes effective may be subject to the updated policy.' },
-  { heading: '13. Contact Us', body: 'QuickFit4u\nEmail: [Your official email address]\nPhone: [Your official contact number]\nAddress: [Your business/registered address]' },
+  { heading: '13. Contact Us', body: 'QuickFit4u\nEmail: quickfit4u.workplace@gmail.com\nPhone: +917970791670' },
 ];
 
 export const PRIVACY_FOOTER =
