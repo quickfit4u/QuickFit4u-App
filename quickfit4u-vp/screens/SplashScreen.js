@@ -5,11 +5,11 @@ import Svg, { Circle, Path, Rect, G } from 'react-native-svg';
 const { width } = Dimensions.get('window');
 
 const COLORS = {
-  cream: '#F7E7CE',
-  ink: '#0A1A26',
-  sage: '#6B9E1E',
-  sageDark: '#4C7A16',
-  gold: '#6B9E1E',
+  cream: '#F5F1E6',
+  ink: '#2B3328',
+  sage: '#7A9166',
+  sageDark: '#5E7A4E',
+  gold: '#C9A227',
 };
 
 export default function SplashScreen({ onFinish }) {
