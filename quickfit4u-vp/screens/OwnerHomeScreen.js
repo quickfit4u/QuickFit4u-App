@@ -237,6 +237,28 @@ export default function OwnerHomeScreen({ user, gym, onNavigate, onLogout, onAcc
               <StatCard label="No-shows" value={String(dashboard.noShowCount)} warn={dashboard.noShowCount > 0} />
             </View>
 
+            <View style={styles.payoutCard}>
+              <View style={styles.payoutRow}>
+                <View>
+                  <Text style={styles.payoutLabel}>Pending Payout</Text>
+                  <Text style={styles.payoutValue}>₹{dashboard.pendingPayoutRupees}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.payoutLabel}>Last Payout</Text>
+                  <Text style={styles.payoutLastValue}>
+                    {dashboard.lastPayoutAmountRupees != null
+                      ? `₹${dashboard.lastPayoutAmountRupees} · ${formatPayoutDate(dashboard.lastPayoutAt)}`
+                      : 'Not paid out yet'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.payoutHint}>
+                {dashboard.pendingPayoutRupees > 0
+                  ? 'This is what QuickFit4u still owes you from paid bookings.'
+                  : "You're all settled up — nothing pending right now."}
+              </Text>
+            </View>
+
             {dashboard.upcomingBookings.length > 0 && (
               <View style={{ marginTop: 16 }}>
                 <Text style={styles.subListTitle}>Upcoming bookings</Text>
@@ -335,6 +357,13 @@ function MenuItem({ label, onPress, danger }) {
   );
 }
 
+function formatPayoutDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
 function StatCard({ label, value, warn }) {
   return (
     <View style={styles.statCard}>
@@ -408,6 +437,15 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 17, fontWeight: '800', color: COLORS.sageDark },
   statValueWarn: { color: '#B4463B' },
   statLabel: { fontSize: 10.5, color: COLORS.inkSoft, marginTop: 4, textAlign: 'center', fontWeight: '600' },
+  payoutCard: {
+    marginHorizontal: 14, marginTop: 12, backgroundColor: '#fff', borderRadius: 16,
+    padding: 16, borderWidth: 1, borderColor: COLORS.line,
+  },
+  payoutRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  payoutLabel: { fontSize: 11, color: COLORS.inkSoft, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.3 },
+  payoutValue: { fontSize: 22, fontWeight: '800', color: COLORS.ink, marginTop: 4 },
+  payoutLastValue: { fontSize: 13, fontWeight: '700', color: COLORS.sageDark, marginTop: 6 },
+  payoutHint: { fontSize: 11.5, color: COLORS.inkSoft, marginTop: 10 },
   subListTitle: { fontSize: 13, fontWeight: '700', color: COLORS.ink, marginHorizontal: 20, marginBottom: 8 },
   miniRow: {
     flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#fff',

@@ -319,12 +319,34 @@ router.get('/mine/dashboard', requireAuth, requireRole('owner'), (req, res) => {
          WHERE s.gym_id = ? AND s.date >= ? AND s.date <= ? AND b.payment_status = 'paid'`
       )
       .get(gym.id, sinceDate, today);
-    return Math.round((row.total || 0) / 100);
+    // bookings.amount is already stored in rupees (see gym.hourly_rate),
+    // so it must NOT be divided by 100 here — that was making revenue
+    // show up as ~0 for any normal rupee amount.
+    return Math.round(row.total || 0);
   }
 
   const todayRevenue = revenueSince(today);
   const weekRevenue = revenueSince(weekStart);
   const monthRevenue = revenueSince(monthStart);
+
+  // Pending payout = money collected from members that admin hasn't
+  // settled to the owner yet. Mirrors pendingPayoutFor() in routes/admin.js
+  // so the owner's dashboard stays in sync with what admin sees/settles.
+  const pendingPayoutRow = gym.last_payout_at
+    ? db
+        .prepare(
+          `SELECT COALESCE(SUM(amount), 0) AS total FROM bookings
+           WHERE gym_id = ? AND payment_status = 'paid' AND created_at > ?`
+        )
+        .get(gym.id, gym.last_payout_at)
+    : db
+        .prepare(`SELECT COALESCE(SUM(amount), 0) AS total FROM bookings WHERE gym_id = ? AND payment_status = 'paid'`)
+        .get(gym.id);
+  const pendingPayoutRupees = pendingPayoutRow.total || 0;
+
+  const lastPayoutRow = db
+    .prepare(`SELECT amount, created_at FROM payouts WHERE gym_id = ? ORDER BY created_at DESC LIMIT 1`)
+    .get(gym.id);
 
   const totalCustomers = db
     .prepare(`SELECT COUNT(DISTINCT user_id) AS n FROM bookings WHERE gym_id = ? AND status = 'checked_in'`)
@@ -371,6 +393,9 @@ router.get('/mine/dashboard', requireAuth, requireRole('owner'), (req, res) => {
     todayRevenue,
     weekRevenue,
     monthRevenue,
+    pendingPayoutRupees,
+    lastPayoutAmountRupees: lastPayoutRow ? lastPayoutRow.amount : null,
+    lastPayoutAt: lastPayoutRow ? lastPayoutRow.created_at : null,
     totalCustomers,
     averageRating: ratingStats.avg_rating ? Math.round(ratingStats.avg_rating * 10) / 10 : null,
     reviewCount: ratingStats.review_count,
