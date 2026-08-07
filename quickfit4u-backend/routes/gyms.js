@@ -319,7 +319,7 @@ router.get('/mine/dashboard', requireAuth, requireRole('owner'), (req, res) => {
          WHERE s.gym_id = ? AND s.date >= ? AND s.date <= ? AND b.payment_status = 'paid'`
       )
       .get(gym.id, sinceDate, today);
-    return Math.round(row.total || 0);
+    return Math.round((row.total || 0) / 100);
   }
 
   const todayRevenue = revenueSince(today);
@@ -507,7 +507,7 @@ router.get('/', (req, res) => {
     lat, lng, maxDistanceKm, sortBy,
   } = req.query;
 
-  let sql = `SELECT * FROM gyms WHERE agreement_signed_at IS NOT NULL`;
+  let sql = `SELECT * FROM gyms WHERE agreement_signed_at IS NOT NULL AND suspended = 0`;
   const params = [];
 
   if (city) {
@@ -589,7 +589,7 @@ router.get('/', (req, res) => {
 router.get('/:id', (req, res) => {
   const gymRow = db.prepare('SELECT * FROM gyms WHERE id = ?').get(req.params.id);
   if (!gymRow) return res.status(404).json({ error: 'Gym not found.' });
-  if (!gymRow.agreement_signed_at) {
+  if (!gymRow.agreement_signed_at || gymRow.suspended) {
     return res.status(404).json({ error: 'This gym is not visible to members yet.' });
   }
 

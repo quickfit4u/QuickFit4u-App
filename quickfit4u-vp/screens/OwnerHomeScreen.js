@@ -4,6 +4,7 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
+  RefreshControl,
   StyleSheet,
   Modal,
   Alert,
@@ -36,20 +37,15 @@ const QUOTES = [
 function getWeekStrip() {
   const days = [];
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const dayIndex = (today.getDay() + 6) % 7;
-  const monday = new Date(today);
-  monday.setDate(today.getDate() - dayIndex);
-  const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const labels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   for (let i = 0; i < 7; i++) {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    if (d < today) continue; // don't show past days of this week
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
     days.push({
-      label: labels[i],
+      label: labels[d.getDay()],
       date: d.getDate(),
       full: d.toISOString().slice(0, 10),
-      isToday: d.toDateString() === today.toDateString(),
+      isToday: i === 0,
     });
   }
   return days;
@@ -75,19 +71,35 @@ export default function OwnerHomeScreen({ user, gym, onNavigate, onLogout, onAcc
   const [pendingCount, setPendingCount] = useState(0);
   const [dashboard, setDashboard] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
+  const loadDashboard = useCallback(() => {
     fetchNotifications().then((data) => setUnreadCount(data.unreadCount)).catch(() => {});
     fetchBookingRequests().then((reqs) => setPendingCount(reqs.length)).catch(() => {});
     if (gym?.agreementSignedAt) {
-      fetchMyDashboard()
+      return fetchMyDashboard()
         .then(setDashboard)
         .catch(() => {})
         .finally(() => setDashboardLoading(false));
-    } else {
-      setDashboardLoading(false);
     }
+    setDashboardLoading(false);
+    return Promise.resolve();
   }, [gym?.agreementSignedAt]);
+
+  useEffect(() => {
+    loadDashboard();
+    // Previously the dashboard only ever fetched once on mount, so a
+    // payment/booking coming in while the owner just sits on this screen
+    // (not navigating away and back) never showed up. A light poll plus
+    // pull-to-refresh below both cover that.
+    const interval = setInterval(loadDashboard, 20000);
+    return () => clearInterval(interval);
+  }, [loadDashboard]);
+
+  function handleRefresh() {
+    setRefreshing(true);
+    Promise.all([loadDashboard(), load(week[selectedDay].full)]).finally(() => setRefreshing(false));
+  }
 
   const load = useCallback((dateStr) => {
     setLoading(true);
@@ -155,7 +167,11 @@ export default function OwnerHomeScreen({ user, gym, onNavigate, onLogout, onAcc
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+      >
         <View style={styles.greetingBlock}>
           <Text style={styles.greetingLine}>Hello,</Text>
           <Text style={styles.greetingLine}>

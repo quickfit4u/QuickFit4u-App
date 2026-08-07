@@ -17,6 +17,7 @@ export default function QrScannerScreen({ title, instructions, onBack, onScanned
   const [manualMode, setManualMode] = useState(false);
   const [code, setCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [cameraKey, setCameraKey] = useState(0);
   const lockRef = useRef(false);
 
   function handleBarcodeScanned({ data }) {
@@ -109,6 +110,7 @@ export default function QrScannerScreen({ title, instructions, onBack, onScanned
   return (
     <View style={styles.root}>
       <CameraView
+        key={cameraKey}
         style={StyleSheet.absoluteFillObject}
         facing="back"
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
@@ -142,6 +144,9 @@ export default function QrScannerScreen({ title, instructions, onBack, onScanned
             <Text style={styles.manualBtnText}>Trouble scanning? Enter code manually</Text>
           </TouchableOpacity>
         )}
+        <TouchableOpacity onPress={() => setCameraKey((k) => k + 1)} style={{ marginTop: 10 }}>
+          <Text style={styles.manualLink}>Camera stuck or black? Tap to reload</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
