@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,8 +9,9 @@ import {
   Modal,
   Alert,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
-import { fetchTodayBookings, fetchNotifications, fetchBookingRequests, fetchMyDashboard, deleteAccount } from '../lib/api';
+import { fetchTodayBookings, fetchNotifications, markNotificationRead, fetchBookingRequests, fetchMyDashboard, deleteAccount } from '../lib/api';
 
 const COLORS = {
   cream: '#F5F1E6',
@@ -25,11 +26,20 @@ const COLORS = {
 
 const QUOTES = [
   'The only bad workout is the one that didn\u2019t happen.',
+  'A year from now you may wish you had started today.',
   'Discipline is choosing between what you want now and what you want most.',
+  'Keep working even when no one is watching.',
   'Your body can stand almost anything. It\u2019s your mind you have to convince.',
   'Small daily improvements are the key to staggering long-term results.',
   'Push yourself, because no one else is going to do it for you.',
+  'It\u2019s hard to beat a person who never gives up.',
+  'Confidence comes from discipline and training.',
+  'Action is the foundational key to all success.',
   'Sweat is just fat crying.',
+  'The real workout starts when you want to stop.',
+  'All progress takes place outside the comfort zone.',
+  'We are what we repeatedly do. Excellence then is not an act but a habit.',
+  'The body achieves what the mind believes.',
   'A one hour workout is 4% of your day. No excuses.',
   'Strength doesn\u2019t come from what you can do. It comes from overcoming what you thought you couldn\u2019t.',
 ];
@@ -85,18 +95,36 @@ export default function OwnerHomeScreen({ user, gym, onNavigate, onLogout, onAcc
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const quote = getDailyQuote();
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [recentNotifications, setRecentNotifications] = useState([]);
+ 
+  const [unreadOnHome, setUnreadOnHome] = useState([]);
+  const bellPulse = useRef(new Animated.Value(1)).current;
+  const knownUnreadIdsRef = useRef(null); // null until first load completes
   const [pendingCount, setPendingCount] = useState(0);
   const [dashboard, setDashboard] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  function pulseBell() {
+    bellPulse.setValue(1);
+    Animated.sequence([
+      Animated.timing(bellPulse, { toValue: 1.3, duration: 150, useNativeDriver: true }),
+      Animated.timing(bellPulse, { toValue: 1, duration: 150, useNativeDriver: true }),
+      Animated.timing(bellPulse, { toValue: 1.18, duration: 150, useNativeDriver: true }),
+      Animated.timing(bellPulse, { toValue: 1, duration: 150, useNativeDriver: true }),
+    ]).start();
+  }
+
   const loadDashboard = useCallback(() => {
     fetchNotifications()
       .then((data) => {
-        setUnreadCount(data.unreadCount);
-        setRecentNotifications(data.notifications.slice(0, 3));
+        const unread = data.notifications.filter((n) => !n.read);
+        const unreadIds = new Set(unread.map((n) => n.id));
+        if (knownUnreadIdsRef.current) {
+          const hasNew = unread.some((n) => !knownUnreadIdsRef.current.has(n.id));
+          if (hasNew) pulseBell();
+        }
+        knownUnreadIdsRef.current = unreadIds;
+        setUnreadOnHome(unread);
       })
       .catch(() => {});
     fetchBookingRequests().then((reqs) => setPendingCount(reqs.length)).catch(() => {});
@@ -112,13 +140,17 @@ export default function OwnerHomeScreen({ user, gym, onNavigate, onLogout, onAcc
 
   useEffect(() => {
     loadDashboard();
-    // Previously the dashboard only ever fetched once on mount, so a
-    // payment/booking coming in while the owner just sits on this screen
-    // (not navigating away and back) never showed up. A light poll plus
-    // pull-to-refresh below both cover that.
+  
     const interval = setInterval(loadDashboard, 20000);
     return () => clearInterval(interval);
   }, [loadDashboard]);
+
+  // Notifications screen.
+  function handleHomeNotifPress(n) {
+    setUnreadOnHome((prev) => prev.filter((item) => item.id !== n.id));
+    markNotificationRead(n.id).catch(() => {});
+    onNavigate('notifications');
+  }
 
   function handleRefresh() {
     setRefreshing(true);
@@ -186,8 +218,16 @@ export default function OwnerHomeScreen({ user, gym, onNavigate, onLogout, onAcc
           </View>
         </TouchableOpacity>
         <TouchableOpacity style={styles.bellBtn} onPress={() => onNavigate('notifications')}>
-          <Text style={{ fontSize: 18 }}>🔔</Text>
-          {unreadCount > 0 && <View style={styles.bellDot} />}
+          <Animated.View style={{ transform: [{ scale: bellPulse }] }}>
+            <Text style={{ fontSize: 18 }}>🔔</Text>
+          </Animated.View>
+          {unreadOnHome.length > 0 && (
+            <View style={styles.bellDot}>
+              {unreadOnHome.length > 1 && (
+                <Text style={styles.bellDotText}>{unreadOnHome.length > 9 ? '9+' : unreadOnHome.length}</Text>
+              )}
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -236,19 +276,28 @@ export default function OwnerHomeScreen({ user, gym, onNavigate, onLogout, onAcc
           })}
         </ScrollView>
 
-        {recentNotifications.length > 0 && (
+        {/* No permanent notifications section — a card only appears here
+            for unread notifications, and disappears once tapped/read. */}
+        {unreadOnHome.length > 0 && (
           <View style={styles.notifPreviewBlock}>
             <View style={styles.notifPreviewHead}>
-              <Text style={styles.notifPreviewTitle}>Notifications</Text>
-              <TouchableOpacity onPress={() => onNavigate('notifications')}>
-                <Text style={styles.seeAll}>See all</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={styles.notifPreviewTitle}>New notification{unreadOnHome.length > 1 ? 's' : ''}</Text>
+                <View style={styles.notifNewPill}>
+                  <Text style={styles.notifNewPillText}>{unreadOnHome.length}</Text>
+                </View>
+              </View>
+              {unreadOnHome.length > 1 && (
+                <TouchableOpacity onPress={() => onNavigate('notifications')}>
+                  <Text style={styles.seeAll}>See all</Text>
+                </TouchableOpacity>
+              )}
             </View>
-            {recentNotifications.map((n) => (
+            {unreadOnHome.slice(0, 3).map((n) => (
               <TouchableOpacity
                 key={n.id}
-                style={[styles.notifPreviewCard, !n.read && styles.notifPreviewCardUnread]}
-                onPress={() => onNavigate('notifications')}
+                style={[styles.notifPreviewCard, styles.notifPreviewCardUnread]}
+                onPress={() => handleHomeNotifPress(n)}
               >
                 <Text style={styles.notifPreviewIcon}>{NOTIF_ICON[n.type] || '🔔'}</Text>
                 <View style={{ flex: 1 }}>
@@ -429,9 +478,11 @@ const styles = StyleSheet.create({
   hbLine: { height: 2.4, backgroundColor: COLORS.ink, borderRadius: 2 },
   bellBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', position: 'relative' },
   bellDot: {
-    position: 'absolute', top: 8, right: 9, width: 9, height: 9, borderRadius: 5,
+    position: 'absolute', top: 5, right: 5, minWidth: 16, height: 16, borderRadius: 8,
     backgroundColor: '#B4463B', borderWidth: 1.5, borderColor: '#fff',
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3,
   },
+  bellDotText: { color: '#fff', fontSize: 9, fontWeight: '800' },
   requestBanner: { backgroundColor: COLORS.ink, borderRadius: 12, padding: 12, marginTop: 14 },
   requestBannerText: { color: '#fff', fontWeight: '700', fontSize: 13 },
   greetingBlock: { paddingHorizontal: 20, marginTop: 6, marginBottom: 18 },
@@ -486,7 +537,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff', borderRadius: 14, padding: 12, marginBottom: 8,
     borderWidth: 1, borderColor: COLORS.line,
   },
-  notifPreviewCardUnread: { borderColor: COLORS.sageDark, backgroundColor: COLORS.sageLight },
+  notifPreviewCardUnread: { borderColor: COLORS.gold, borderWidth: 1.5, backgroundColor: '#FBF3DC' },
+  notifNewPill: {
+    backgroundColor: COLORS.gold, borderRadius: 100, paddingHorizontal: 8, paddingVertical: 2.5,
+  },
+  notifNewPillText: { color: '#fff', fontSize: 10.5, fontWeight: '800' },
   notifPreviewIcon: { fontSize: 18 },
   notifPreviewCardTitle: { fontSize: 13, fontWeight: '700', color: COLORS.ink },
   notifPreviewCardBody: { fontSize: 11.5, color: COLORS.inkSoft, marginTop: 2 },

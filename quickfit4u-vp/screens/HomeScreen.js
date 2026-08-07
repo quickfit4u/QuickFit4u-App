@@ -14,7 +14,7 @@ import {
   Animated,
 } from 'react-native';
 import * as Location from 'expo-location';
-import { fetchGyms, fetchNotifications, deleteAccount } from '../lib/api';
+import { fetchGyms, fetchNotifications, markNotificationRead, deleteAccount } from '../lib/api';
 
 const COLORS = {
   cream: '#F5F1E6',
@@ -29,11 +29,20 @@ const COLORS = {
 
 const QUOTES = [
   'The only bad workout is the one that didn\u2019t happen.',
+  'A year from now you may wish you had started today.',
   'Discipline is choosing between what you want now and what you want most.',
+  'Keep working even when no one is watching.',
   'Your body can stand almost anything. It\u2019s your mind you have to convince.',
   'Small daily improvements are the key to staggering long-term results.',
   'Push yourself, because no one else is going to do it for you.',
+  'It\u2019s hard to beat a person who never gives up.',
+  'Confidence comes from discipline and training.',
+  'Action is the foundational key to all success.',
   'Sweat is just fat crying.',
+  'The real workout starts when you want to stop.',
+  'All progress takes place outside the comfort zone.',
+  'We are what we repeatedly do. Excellence then is not an act but a habit.',
+  'The body achieves what the mind believes.',
   'A one hour workout is 4% of your day. No excuses.',
   'Strength doesn\u2019t come from what you can do. It comes from overcoming what you thought you couldn\u2019t.',
 ];
@@ -131,11 +140,13 @@ export default function HomeScreen({ user, onOpenGym, onLogout, onNavigate, onAc
   const week = getWeekStrip();
   const quote = getDailyQuote();
   const isSearching = searchQuery.trim().length > 0;
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [recentNotifications, setRecentNotifications] = useState([]);
-  const [justArrivedIds, setJustArrivedIds] = useState([]);
-  const knownNotifIdsRef = useRef(null); // null until first load completes
+  // Only UNREAD notifications ever show on Home — there's no permanent
+  // "Notifications" section anymore. A card appears here the moment a new
+  // one arrives, and disappears the moment the user taps it (or reads it
+  // in the full Notifications screen).
+  const [unreadOnHome, setUnreadOnHome] = useState([]);
   const bellPulse = useRef(new Animated.Value(1)).current;
+  const knownUnreadIdsRef = useRef(null); // null until first load completes
 
   function pulseBell() {
     bellPulse.setValue(1);
@@ -150,23 +161,18 @@ export default function HomeScreen({ user, onOpenGym, onLogout, onNavigate, onAc
   async function pollNotifications() {
     try {
       const data = await fetchNotifications();
-      setUnreadCount(data.unreadCount);
-      const latest = data.notifications.slice(0, 3);
-      setRecentNotifications(latest);
+      const unread = data.notifications.filter((n) => !n.read);
+      const unreadIds = new Set(unread.map((n) => n.id));
 
-      const currentIds = new Set(data.notifications.map((n) => n.id));
-      if (knownNotifIdsRef.current) {
-        const freshIds = data.notifications
-          .filter((n) => !knownNotifIdsRef.current.has(n.id))
-          .map((n) => n.id);
-        if (freshIds.length > 0) {
-          setJustArrivedIds(freshIds);
-          pulseBell();
-          // Let the highlight fade after a while so it doesn't linger forever.
-          setTimeout(() => setJustArrivedIds((prev) => prev.filter((id) => !freshIds.includes(id))), 15000);
-        }
+      // Pulse the bell only when a genuinely new unread notification shows
+      // up (not on first load, and not just because count stayed the same).
+      if (knownUnreadIdsRef.current) {
+        const hasNew = unread.some((n) => !knownUnreadIdsRef.current.has(n.id));
+        if (hasNew) pulseBell();
       }
-      knownNotifIdsRef.current = currentIds;
+      knownUnreadIdsRef.current = unreadIds;
+
+      setUnreadOnHome(unread);
     } catch (e) {
       // Silent — this is a background refresh, not a user-triggered action.
     }
@@ -178,6 +184,15 @@ export default function HomeScreen({ user, onOpenGym, onLogout, onNavigate, onAc
     const interval = setInterval(pollNotifications, 20000); // check for new notifications every 20s
     return () => clearInterval(interval);
   }, [user]);
+
+  // Tapping a notification on Home dismisses it from Home immediately
+  // (optimistic) and marks it read on the server, then opens the full
+  // Notifications screen.
+  function handleHomeNotifPress(n) {
+    setUnreadOnHome((prev) => prev.filter((item) => item.id !== n.id));
+    markNotificationRead(n.id).catch(() => {});
+    onNavigate('notifications');
+  }
 
   function handleDeleteAccount() {
     setMenuOpen(false);
@@ -321,9 +336,11 @@ export default function HomeScreen({ user, onOpenGym, onLogout, onNavigate, onAc
           <Animated.View style={{ transform: [{ scale: bellPulse }] }}>
             <Text style={{ fontSize: 18 }}>🔔</Text>
           </Animated.View>
-          {unreadCount > 0 && (
+          {unreadOnHome.length > 0 && (
             <View style={styles.bellDot}>
-              {unreadCount > 1 && <Text style={styles.bellDotText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>}
+              {unreadOnHome.length > 1 && (
+                <Text style={styles.bellDotText}>{unreadOnHome.length > 9 ? '9+' : unreadOnHome.length}</Text>
+              )}
             </View>
           )}
         </TouchableOpacity>
@@ -383,45 +400,37 @@ export default function HomeScreen({ user, onOpenGym, onLogout, onNavigate, onAc
           </ScrollView>
         )}
 
-        {!!user && recentNotifications.length > 0 && (
+        {/* No permanent notifications section — a card only appears here
+            for unread notifications, and disappears once tapped/read. */}
+        {!!user && unreadOnHome.length > 0 && (
           <View style={styles.notifPreviewBlock}>
             <View style={styles.notifPreviewHead}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Text style={styles.notifPreviewTitle}>Notifications</Text>
-                {unreadCount > 0 && (
-                  <View style={styles.notifNewPill}>
-                    <Text style={styles.notifNewPillText}>{unreadCount} new</Text>
-                  </View>
-                )}
+                <Text style={styles.notifPreviewTitle}>New notification{unreadOnHome.length > 1 ? 's' : ''}</Text>
+                <View style={styles.notifNewPill}>
+                  <Text style={styles.notifNewPillText}>{unreadOnHome.length}</Text>
+                </View>
               </View>
-              <TouchableOpacity onPress={() => onNavigate('notifications')}>
-                <Text style={styles.seeAll}>See all</Text>
-              </TouchableOpacity>
-            </View>
-            {recentNotifications.map((n) => {
-              const justArrived = justArrivedIds.includes(n.id);
-              return (
-                <TouchableOpacity
-                  key={n.id}
-                  style={[
-                    styles.notifPreviewCard,
-                    !n.read && styles.notifPreviewCardUnread,
-                    justArrived && styles.notifPreviewCardJustArrived,
-                  ]}
-                  onPress={() => onNavigate('notifications')}
-                >
-                  <Text style={styles.notifPreviewIcon}>{NOTIF_ICON[n.type] || '🔔'}</Text>
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                      <Text style={styles.notifPreviewCardTitle} numberOfLines={1}>{n.title}</Text>
-                      {justArrived && <Text style={styles.notifJustArrivedTag}>NEW</Text>}
-                    </View>
-                    {!!n.body && <Text style={styles.notifPreviewCardBody} numberOfLines={1}>{n.body}</Text>}
-                  </View>
-                  <Text style={styles.notifPreviewTime}>{notifTimeAgo(n.createdAt)}</Text>
+              {unreadOnHome.length > 1 && (
+                <TouchableOpacity onPress={() => onNavigate('notifications')}>
+                  <Text style={styles.seeAll}>See all</Text>
                 </TouchableOpacity>
-              );
-            })}
+              )}
+            </View>
+            {unreadOnHome.slice(0, 3).map((n) => (
+              <TouchableOpacity
+                key={n.id}
+                style={[styles.notifPreviewCard, styles.notifPreviewCardUnread]}
+                onPress={() => handleHomeNotifPress(n)}
+              >
+                <Text style={styles.notifPreviewIcon}>{NOTIF_ICON[n.type] || '🔔'}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.notifPreviewCardTitle} numberOfLines={1}>{n.title}</Text>
+                  {!!n.body && <Text style={styles.notifPreviewCardBody} numberOfLines={1}>{n.body}</Text>}
+                </View>
+                <Text style={styles.notifPreviewTime}>{notifTimeAgo(n.createdAt)}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
         )}
 
@@ -650,16 +659,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff', borderRadius: 14, padding: 12, marginBottom: 8,
     borderWidth: 1, borderColor: COLORS.line,
   },
-  notifPreviewCardUnread: { borderColor: COLORS.sageDark, backgroundColor: COLORS.sageLight },
-  notifPreviewCardJustArrived: { borderColor: COLORS.gold, borderWidth: 1.5, backgroundColor: '#FBF3DC' },
+  notifPreviewCardUnread: { borderColor: COLORS.gold, borderWidth: 1.5, backgroundColor: '#FBF3DC' },
   notifNewPill: {
     backgroundColor: COLORS.gold, borderRadius: 100, paddingHorizontal: 8, paddingVertical: 2.5,
   },
   notifNewPillText: { color: '#fff', fontSize: 10.5, fontWeight: '800' },
-  notifJustArrivedTag: {
-    fontSize: 9, fontWeight: '800', color: '#fff', backgroundColor: COLORS.gold,
-    borderRadius: 100, paddingHorizontal: 6, paddingVertical: 1.5, letterSpacing: 0.5,
-  },
   notifPreviewIcon: { fontSize: 18 },
   notifPreviewCardTitle: { fontSize: 13, fontWeight: '700', color: COLORS.ink },
   notifPreviewCardBody: { fontSize: 11.5, color: COLORS.inkSoft, marginTop: 2 },
