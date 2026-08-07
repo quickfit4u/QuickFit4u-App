@@ -60,10 +60,40 @@ function getDailyQuote() {
   return QUOTES[dayOfYear % QUOTES.length];
 }
 
+const HOME_QUICK_CHIPS = [
+  { key: 'near', label: '⚡ Near & Fast' },
+  { key: 'new', label: 'New to you' },
+  { key: 'price', label: '₹ Cheapest' },
+  { key: 'top', label: '★ Top Rated' },
+];
+
+function isHomeChipActive(key, sortBy, openNow) {
+  if (key === 'near') return sortBy === 'distance' && openNow;
+  if (key === 'new') return sortBy == null;
+  if (key === 'price') return sortBy === 'price';
+  if (key === 'top') return sortBy === 'rating';
+  return false;
+}
+
+function applyHomeChip(key, sortBy, openNow) {
+  const active = isHomeChipActive(key, sortBy, openNow);
+  if (active) {
+    // Tapping an active chip again turns it off, back to default nearest-first.
+    return { sortBy: null, openNow: false };
+  }
+  if (key === 'near') return { sortBy: 'distance', openNow: true };
+  if (key === 'new') return { sortBy: null, openNow };
+  if (key === 'price') return { sortBy: 'price', openNow };
+  if (key === 'top') return { sortBy: 'rating', openNow };
+  return { sortBy, openNow };
+}
+
 export default function HomeScreen({ user, onOpenGym, onLogout, onNavigate, onAccountDeleted }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState(null);
   const [locationLabel, setLocationLabel] = useState('Finding your location...');
+  const [coords, setCoords] = useState(null);
+  const [coordsReady, setCoordsReady] = useState(false);
   const [gyms, setGyms] = useState([]);
   const [loadingGyms, setLoadingGyms] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -72,6 +102,8 @@ export default function HomeScreen({ user, onOpenGym, onLogout, onNavigate, onAc
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [homeSortBy, setHomeSortBy] = useState(null); // null | 'distance' | 'price' | 'rating'
+  const [homeOpenNow, setHomeOpenNow] = useState(false);
   const week = getWeekStrip();
   const quote = getDailyQuote();
   const isSearching = searchQuery.trim().length > 0;
@@ -121,36 +153,21 @@ export default function HomeScreen({ user, onOpenGym, onLogout, onNavigate, onAc
     );
   }
 
-  async function loadEverything({ isRefresh = false } = {}) {
+  async function fetchNearbyGyms({ isRefresh = false, atCoords = coords } = {}) {
     if (isRefresh) setRefreshing(true);
     else setLoadingGyms(true);
     setLoadError('');
-
-    let cityForSearch = null;
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setLocationLabel('Enable location to see gyms near you');
-      } else {
-        const pos = await Location.getCurrentPositionAsync({});
-        const places = await Location.reverseGeocodeAsync({
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-        });
-        const place = places[0];
-        if (place) {
-          setLocationLabel(`Near ${place.district || place.city || place.subregion || 'you'}`);
-          cityForSearch = place.city || place.subregion || null;
-        } else {
-          setLocationLabel('Nearby gyms');
-        }
-      }
-    } catch (e) {
-      setLocationLabel('Nearby gyms');
-    }
-
-    try {
-      const results = await fetchGyms(cityForSearch);
+      const results = await fetchGyms({
+        lat: atCoords ? atCoords.lat : undefined,
+        lng: atCoords ? atCoords.lng : undefined,
+        // "Near you" on Home is capped to 50km so it stays a genuinely nearby list.
+        // The full "Find a Gym" screen (See all) has no such cap.
+        maxDistanceKm: atCoords ? 50 : undefined,
+        sortBy: homeSortBy || (atCoords ? 'distance' : undefined),
+        openNow: homeOpenNow || undefined,
+        minRating: homeSortBy === 'rating' ? 4 : undefined,
+      });
       setGyms(results);
     } catch (e) {
       setLoadError(e.message);
@@ -160,9 +177,43 @@ export default function HomeScreen({ user, onOpenGym, onLogout, onNavigate, onAc
     }
   }
 
+  async function loadEverything({ isRefresh = false } = {}) {
+    let atCoords = null;
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setLocationLabel('Enable location to see gyms near you');
+      } else {
+        const pos = await Location.getCurrentPositionAsync({});
+        atCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        const places = await Location.reverseGeocodeAsync({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        });
+        const place = places[0];
+        if (place) {
+          setLocationLabel(`Near ${place.district || place.city || place.subregion || 'you'}`);
+        } else {
+          setLocationLabel('Nearby gyms');
+        }
+      }
+    } catch (e) {
+      setLocationLabel('Nearby gyms');
+    }
+    setCoords(atCoords);
+    setCoordsReady(true);
+    await fetchNearbyGyms({ isRefresh, atCoords });
+  }
+
   useEffect(() => {
     loadEverything();
   }, []);
+
+  // Re-fetch the nearby list (not location) whenever a quick filter chip changes.
+  useEffect(() => {
+    if (!coordsReady) return;
+    fetchNearbyGyms();
+  }, [homeSortBy, homeOpenNow]);
 
  
   useEffect(() => {
@@ -286,6 +337,36 @@ export default function HomeScreen({ user, onOpenGym, onLogout, onNavigate, onAc
             </TouchableOpacity>
           )}
         </View>
+
+        {!isSearching && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.quickChipRow}
+            contentContainerStyle={styles.quickChipRowContent}
+          >
+            <TouchableOpacity style={styles.quickChip} onPress={() => onOpenGym && onOpenGym(null, true)}>
+              <Text style={styles.quickChipText}>Filters</Text>
+              <Text style={styles.quickChipCaret}>▾</Text>
+            </TouchableOpacity>
+            {HOME_QUICK_CHIPS.map((chip) => {
+              const active = isHomeChipActive(chip.key, homeSortBy, homeOpenNow);
+              return (
+                <TouchableOpacity
+                  key={chip.key}
+                  style={[styles.quickChip, active && styles.quickChipActive]}
+                  onPress={() => {
+                    const next = applyHomeChip(chip.key, homeSortBy, homeOpenNow);
+                    setHomeSortBy(next.sortBy);
+                    setHomeOpenNow(next.openNow);
+                  }}
+                >
+                  <Text style={[styles.quickChipText, active && styles.quickChipTextActive]}>{chip.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
 
         {(isSearching ? searching : loadingGyms) && (
           <View style={{ paddingVertical: 30, alignItems: 'center' }}>
@@ -457,6 +538,17 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { fontSize: 17, fontWeight: '700', color: COLORS.ink },
   seeAll: { fontSize: 13, color: COLORS.sageDark, fontWeight: '600' },
+  quickChipRow: { flexGrow: 0, flexShrink: 0, height: 44, marginBottom: 14 },
+  quickChipRowContent: { paddingHorizontal: 20, gap: 8, alignItems: 'center' },
+  quickChip: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    height: 36, paddingHorizontal: 14, borderRadius: 100,
+    backgroundColor: '#fff', borderWidth: 1, borderColor: COLORS.line,
+  },
+  quickChipActive: { backgroundColor: COLORS.sageDark, borderColor: COLORS.sageDark },
+  quickChipText: { fontSize: 12.5, fontWeight: '700', color: COLORS.ink },
+  quickChipTextActive: { color: '#fff' },
+  quickChipCaret: { fontSize: 10, color: COLORS.inkSoft },
   errorText: { color: '#B4463B', textAlign: 'center', marginBottom: 20, paddingHorizontal: 20, fontSize: 13 },
   emptyText: { color: COLORS.inkSoft, textAlign: 'center', marginBottom: 20, fontSize: 13.5 },
   gymCard: {

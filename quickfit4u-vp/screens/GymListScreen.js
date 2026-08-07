@@ -60,12 +60,14 @@ const DEFAULT_FILTERS = {
 const QUICK_CHIPS = [
   { key: 'near', label: '⚡ Near & Fast' },
   { key: 'new', label: 'New to you' },
+  { key: 'price', label: '₹ Cheapest' },
   { key: 'top', label: '★ Top Rated' },
 ];
 
 function isQuickChipActive(key, f) {
   if (key === 'near') return f.sortBy === 'distance' && f.openNow;
   if (key === 'new') return f.sortBy == null && !f.minRating;
+  if (key === 'price') return f.sortBy === 'price';
   if (key === 'top') return f.sortBy === 'rating' && f.minRating === 4;
   return false;
 }
@@ -74,11 +76,13 @@ function applyQuickChip(key, f) {
   // Tapping an active quick chip again turns it off (back to default sort).
   if (isQuickChipActive(key, f)) {
     if (key === 'near') return { ...f, sortBy: null, openNow: false };
+    if (key === 'price') return { ...f, sortBy: null };
     if (key === 'top') return { ...f, sortBy: null, minRating: null };
     return f;
   }
   if (key === 'near') return { ...f, sortBy: 'distance', openNow: true };
   if (key === 'new') return { ...f, sortBy: null, minRating: null };
+  if (key === 'price') return { ...f, sortBy: 'price' };
   if (key === 'top') return { ...f, sortBy: 'rating', minRating: 4 };
   return f;
 }
@@ -236,7 +240,7 @@ export default function GymListScreen({ onBack, onOpenGym }) {
         horizontal
         showsHorizontalScrollIndicator={false}
         style={styles.quickChipRow}
-        contentContainerStyle={{ paddingHorizontal: 20, gap: 10 }}
+        contentContainerStyle={styles.quickChipRowContent}
       >
         <TouchableOpacity style={styles.quickChip} onPress={openFilters}>
           <Text style={styles.quickChipText}>Filters</Text>
@@ -453,16 +457,17 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.sageDark, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4,
   },
   filterBadgeText: { color: '#fff', fontSize: 10.5, fontWeight: '700' },
-  quickChipRow: { marginBottom: 12 },
+  quickChipRow: { flexGrow: 0, flexShrink: 0, height: 44, marginBottom: 12 },
+  quickChipRowContent: { paddingHorizontal: 20, gap: 8, alignItems: 'center' },
   quickChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 100,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    height: 36, paddingHorizontal: 14, borderRadius: 100,
     backgroundColor: '#fff', borderWidth: 1, borderColor: COLORS.line,
   },
   quickChipActive: { backgroundColor: COLORS.sageDark, borderColor: COLORS.sageDark },
-  quickChipText: { fontSize: 13, fontWeight: '700', color: COLORS.ink },
+  quickChipText: { fontSize: 12.5, fontWeight: '700', color: COLORS.ink },
   quickChipTextActive: { color: '#fff' },
-  quickChipCaret: { fontSize: 11, color: COLORS.inkSoft },
+  quickChipCaret: { fontSize: 10, color: COLORS.inkSoft },
   activeFiltersRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, marginBottom: 10,
