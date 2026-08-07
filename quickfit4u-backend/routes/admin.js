@@ -241,6 +241,72 @@ router.get('/bookings/today', (req, res) => {
 });
 
 
+// ---------- Payments (list + summary, backs public/admin/payments.html) ----------
+router.get('/payments', (req, res) => {
+  const { date, status, search } = req.query;
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const pageSize = 20;
+
+  let sql = `SELECT p.id, p.amount, p.status, p.razorpay_payment_id, p.created_at,
+                    b.booking_code, g.name AS gym_name, u.name AS member_name, u.email AS member_email
+             FROM payments p
+             JOIN bookings b ON b.id = p.booking_id
+             JOIN gyms g ON g.id = b.gym_id
+             JOIN users u ON u.id = b.user_id
+             WHERE 1=1`;
+  const params = [];
+
+  if (date) {
+    sql += ` AND date(p.created_at) = date(?)`;
+    params.push(date);
+  }
+  if (status && ['created', 'paid', 'failed'].includes(status)) {
+    sql += ` AND p.status = ?`;
+    params.push(status);
+  }
+  if (search && search.trim()) {
+    sql += ` AND (g.name LIKE ? COLLATE NOCASE OR u.name LIKE ? COLLATE NOCASE OR u.email LIKE ? COLLATE NOCASE OR b.booking_code LIKE ? COLLATE NOCASE OR p.razorpay_payment_id LIKE ? COLLATE NOCASE)`;
+    const term = `%${search.trim()}%`;
+    params.push(term, term, term, term, term);
+  }
+
+  const countRow = db.prepare(`SELECT COUNT(*) AS c FROM (${sql})`).get(...params);
+  sql += ` ORDER BY p.created_at DESC LIMIT ? OFFSET ?`;
+  const rows = db.prepare(sql).all(...params, pageSize, (page - 1) * pageSize);
+
+  const summaryRow = db
+    .prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END), 0) AS totalCollected,
+         COALESCE(SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END), 0) AS paidCount,
+         COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) AS failedCount
+       FROM payments`
+    )
+    .get();
+
+  res.json({
+    summary: {
+      totalCollectedRupees: summaryRow.totalCollected,
+      paidCount: summaryRow.paidCount,
+      failedCount: summaryRow.failedCount,
+    },
+    total: countRow.c,
+    page,
+    pageSize,
+    payments: rows.map((r) => ({
+      bookingCode: r.booking_code,
+      gymName: r.gym_name,
+      memberName: r.member_name,
+      memberEmail: r.member_email,
+      amountRupees: r.amount,
+      status: r.status,
+      razorpayPaymentId: r.razorpay_payment_id,
+      createdAt: r.created_at,
+    })),
+  });
+});
+
+
 router.get('/reviews', (req, res) => {
   const { search } = req.query;
   let sql = `SELECT r.*, g.name AS gym_name, u.name AS member_name

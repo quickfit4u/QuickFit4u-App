@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, Alert, Modal, TextInput, ActivityIndicator } from 'react-native';
-import { fetchGymDetail, requestReschedule } from '../lib/api';
+import { fetchGymDetail, requestReschedule, leaveReview } from '../lib/api';
 
 const COLORS = {
   cream: '#F5F1E6',
@@ -52,6 +52,30 @@ export default function BookingDetailScreen({ booking: initialBooking, onBack, o
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [modalError, setModalError] = useState('');
+
+  const [myRating, setMyRating] = useState(0);
+  const [myReviewText, setMyReviewText] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewError, setReviewError] = useState('');
+  const [reviewSubmitted, setReviewSubmitted] = useState(false);
+
+  async function handleSubmitReview() {
+    setReviewError('');
+    if (!myRating) {
+      setReviewError('Tap a star to give a rating.');
+      return;
+    }
+    setSubmittingReview(true);
+    try {
+      await leaveReview(booking.gymId, { rating: myRating, text: myReviewText.trim() });
+      setReviewSubmitted(true);
+    } catch (e) {
+      setReviewError(e.message);
+    } finally {
+      setSubmittingReview(false);
+    }
+  }
+
 
   function openModal() {
     setModalVisible(true);
@@ -172,6 +196,41 @@ export default function BookingDetailScreen({ booking: initialBooking, onBack, o
         </View>
       )}
 
+      {booking.status === 'checked_in' && (
+        <View style={styles.reviewCard}>
+          {reviewSubmitted ? (
+            <Text style={styles.reviewThanks}>🌟 Thanks — your review has been posted.</Text>
+          ) : (
+            <>
+              <Text style={styles.reviewTitle}>How was your workout?</Text>
+              <View style={styles.starsRow}>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <TouchableOpacity key={n} onPress={() => setMyRating(n)}>
+                    <Text style={[styles.star, n <= myRating && styles.starActive]}>★</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TextInput
+                style={styles.reviewInput}
+                placeholder="Share a few words about the gym (optional)"
+                placeholderTextColor={COLORS.inkSoft}
+                value={myReviewText}
+                onChangeText={setMyReviewText}
+                multiline
+              />
+              {!!reviewError && <Text style={styles.modalError}>{reviewError}</Text>}
+              <TouchableOpacity
+                style={[styles.reviewSubmitBtn, submittingReview && styles.modalSubmitBtnDisabled]}
+                onPress={handleSubmitReview}
+                disabled={submittingReview}
+              >
+                {submittingReview ? <ActivityIndicator color="#fff" /> : <Text style={styles.reviewSubmitText}>Post Review</Text>}
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      )}
+
       {booking.status === 'rejected' && (
         <View style={styles.rejectedBanner}>
           <Text style={styles.rejectedText}>This booking was declined by the gym. Try another time.</Text>
@@ -288,6 +347,21 @@ const styles = StyleSheet.create({
   scanBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
   checkedInBanner: { backgroundColor: COLORS.sageLight, borderRadius: 14, padding: 16 },
   checkedInText: { color: COLORS.sageDark, fontWeight: '700', fontSize: 13.5, textAlign: 'center' },
+  reviewCard: {
+    backgroundColor: '#fff', borderRadius: 16, padding: 16, marginTop: 16,
+    borderWidth: 1, borderColor: COLORS.line,
+  },
+  reviewTitle: { fontSize: 14.5, fontWeight: '700', color: COLORS.ink, marginBottom: 10, textAlign: 'center' },
+  starsRow: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginBottom: 12 },
+  star: { fontSize: 30, color: COLORS.line },
+  starActive: { color: COLORS.gold },
+  reviewInput: {
+    backgroundColor: COLORS.cream, borderRadius: 12, borderWidth: 1, borderColor: COLORS.line,
+    padding: 12, fontSize: 13, color: COLORS.ink, minHeight: 56, textAlignVertical: 'top', marginBottom: 10,
+  },
+  reviewSubmitBtn: { backgroundColor: COLORS.sageDark, borderRadius: 100, paddingVertical: 13, alignItems: 'center' },
+  reviewSubmitText: { color: '#fff', fontWeight: '700', fontSize: 13.5 },
+  reviewThanks: { color: COLORS.sageDark, fontWeight: '700', fontSize: 13.5, textAlign: 'center' },
   pendingBanner: { backgroundColor: '#F7EFD8', borderRadius: 14, padding: 16 },
   pendingText: { color: '#8A6D1F', fontWeight: '700', fontSize: 13.5, textAlign: 'center' },
   rejectedBanner: { backgroundColor: COLORS.errorBg, borderRadius: 14, padding: 16 },

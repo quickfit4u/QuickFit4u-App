@@ -51,6 +51,24 @@ function getWeekStrip() {
   return days;
 }
 
+const NOTIF_ICON = {
+  booking_requested: '📩',
+  booking_confirmed: '✅',
+  booking_rejected: '❌',
+};
+
+function notifTimeAgo(dateStr) {
+  const then = new Date(dateStr.includes('T') ? dateStr : dateStr.replace(' ', 'T') + 'Z');
+  const diffMs = Date.now() - then.getTime();
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
 function getDailyQuote() {
   const start = new Date(new Date().getFullYear(), 0, 0);
   const diff = new Date() - start;
@@ -68,13 +86,19 @@ export default function OwnerHomeScreen({ user, gym, onNavigate, onLogout, onAcc
   const [error, setError] = useState('');
   const quote = getDailyQuote();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [recentNotifications, setRecentNotifications] = useState([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [dashboard, setDashboard] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadDashboard = useCallback(() => {
-    fetchNotifications().then((data) => setUnreadCount(data.unreadCount)).catch(() => {});
+    fetchNotifications()
+      .then((data) => {
+        setUnreadCount(data.unreadCount);
+        setRecentNotifications(data.notifications.slice(0, 3));
+      })
+      .catch(() => {});
     fetchBookingRequests().then((reqs) => setPendingCount(reqs.length)).catch(() => {});
     if (gym?.agreementSignedAt) {
       return fetchMyDashboard()
@@ -211,6 +235,31 @@ export default function OwnerHomeScreen({ user, gym, onNavigate, onLogout, onAcc
             );
           })}
         </ScrollView>
+
+        {recentNotifications.length > 0 && (
+          <View style={styles.notifPreviewBlock}>
+            <View style={styles.notifPreviewHead}>
+              <Text style={styles.notifPreviewTitle}>Notifications</Text>
+              <TouchableOpacity onPress={() => onNavigate('notifications')}>
+                <Text style={styles.seeAll}>See all</Text>
+              </TouchableOpacity>
+            </View>
+            {recentNotifications.map((n) => (
+              <TouchableOpacity
+                key={n.id}
+                style={[styles.notifPreviewCard, !n.read && styles.notifPreviewCardUnread]}
+                onPress={() => onNavigate('notifications')}
+              >
+                <Text style={styles.notifPreviewIcon}>{NOTIF_ICON[n.type] || '🔔'}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.notifPreviewCardTitle} numberOfLines={1}>{n.title}</Text>
+                  {!!n.body && <Text style={styles.notifPreviewCardBody} numberOfLines={1}>{n.body}</Text>}
+                </View>
+                <Text style={styles.notifPreviewTime}>{notifTimeAgo(n.createdAt)}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         {!!gym?.agreementSignedAt && (
           <TouchableOpacity style={styles.scanQrButton} onPress={() => onNavigate('ownerScanQr')}>
@@ -429,6 +478,19 @@ const styles = StyleSheet.create({
   sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 14 },
   sectionTitle: { fontSize: 17, fontWeight: '700', color: COLORS.ink, flex: 1, marginRight: 10 },
   seeAll: { fontSize: 13, color: COLORS.sageDark, fontWeight: '600' },
+  notifPreviewBlock: { marginHorizontal: 20, marginBottom: 20 },
+  notifPreviewHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  notifPreviewTitle: { fontSize: 15, fontWeight: '700', color: COLORS.ink },
+  notifPreviewCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#fff', borderRadius: 14, padding: 12, marginBottom: 8,
+    borderWidth: 1, borderColor: COLORS.line,
+  },
+  notifPreviewCardUnread: { borderColor: COLORS.sageDark, backgroundColor: COLORS.sageLight },
+  notifPreviewIcon: { fontSize: 18 },
+  notifPreviewCardTitle: { fontSize: 13, fontWeight: '700', color: COLORS.ink },
+  notifPreviewCardBody: { fontSize: 11.5, color: COLORS.inkSoft, marginTop: 2 },
+  notifPreviewTime: { fontSize: 10.5, color: COLORS.inkSoft },
   statGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 14, gap: 10 },
   statCard: {
     width: '30%', backgroundColor: '#fff', borderRadius: 14, paddingVertical: 16, paddingHorizontal: 8,
