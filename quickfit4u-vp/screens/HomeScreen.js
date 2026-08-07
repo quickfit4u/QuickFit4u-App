@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Image,
   RefreshControl,
+  Animated,
 } from 'react-native';
 import * as Location from 'expo-location';
 import { fetchGyms, fetchNotifications, deleteAccount } from '../lib/api';
@@ -132,15 +133,50 @@ export default function HomeScreen({ user, onOpenGym, onLogout, onNavigate, onAc
   const isSearching = searchQuery.trim().length > 0;
   const [unreadCount, setUnreadCount] = useState(0);
   const [recentNotifications, setRecentNotifications] = useState([]);
+  const [justArrivedIds, setJustArrivedIds] = useState([]);
+  const knownNotifIdsRef = useRef(null); // null until first load completes
+  const bellPulse = useRef(new Animated.Value(1)).current;
+
+  function pulseBell() {
+    bellPulse.setValue(1);
+    Animated.sequence([
+      Animated.timing(bellPulse, { toValue: 1.3, duration: 150, useNativeDriver: true }),
+      Animated.timing(bellPulse, { toValue: 1, duration: 150, useNativeDriver: true }),
+      Animated.timing(bellPulse, { toValue: 1.18, duration: 150, useNativeDriver: true }),
+      Animated.timing(bellPulse, { toValue: 1, duration: 150, useNativeDriver: true }),
+    ]).start();
+  }
+
+  async function pollNotifications() {
+    try {
+      const data = await fetchNotifications();
+      setUnreadCount(data.unreadCount);
+      const latest = data.notifications.slice(0, 3);
+      setRecentNotifications(latest);
+
+      const currentIds = new Set(data.notifications.map((n) => n.id));
+      if (knownNotifIdsRef.current) {
+        const freshIds = data.notifications
+          .filter((n) => !knownNotifIdsRef.current.has(n.id))
+          .map((n) => n.id);
+        if (freshIds.length > 0) {
+          setJustArrivedIds(freshIds);
+          pulseBell();
+          // Let the highlight fade after a while so it doesn't linger forever.
+          setTimeout(() => setJustArrivedIds((prev) => prev.filter((id) => !freshIds.includes(id))), 15000);
+        }
+      }
+      knownNotifIdsRef.current = currentIds;
+    } catch (e) {
+      // Silent — this is a background refresh, not a user-triggered action.
+    }
+  }
 
   useEffect(() => {
-    if (!user) return; 
-    fetchNotifications()
-      .then((data) => {
-        setUnreadCount(data.unreadCount);
-        setRecentNotifications(data.notifications.slice(0, 3));
-      })
-      .catch(() => {});
+    if (!user) return;
+    pollNotifications();
+    const interval = setInterval(pollNotifications, 20000); // check for new notifications every 20s
+    return () => clearInterval(interval);
   }, [user]);
 
   function handleDeleteAccount() {
@@ -282,8 +318,14 @@ export default function HomeScreen({ user, onOpenGym, onLogout, onNavigate, onAc
           style={styles.bellBtn}
           onPress={() => (user ? onNavigate('notifications') : onLogout && onLogout())}
         >
-          <Text style={{ fontSize: 18 }}>🔔</Text>
-          {unreadCount > 0 && <View style={styles.bellDot} />}
+          <Animated.View style={{ transform: [{ scale: bellPulse }] }}>
+            <Text style={{ fontSize: 18 }}>🔔</Text>
+          </Animated.View>
+          {unreadCount > 0 && (
+            <View style={styles.bellDot}>
+              {unreadCount > 1 && <Text style={styles.bellDotText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>}
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -344,25 +386,42 @@ export default function HomeScreen({ user, onOpenGym, onLogout, onNavigate, onAc
         {!!user && recentNotifications.length > 0 && (
           <View style={styles.notifPreviewBlock}>
             <View style={styles.notifPreviewHead}>
-              <Text style={styles.notifPreviewTitle}>Notifications</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text style={styles.notifPreviewTitle}>Notifications</Text>
+                {unreadCount > 0 && (
+                  <View style={styles.notifNewPill}>
+                    <Text style={styles.notifNewPillText}>{unreadCount} new</Text>
+                  </View>
+                )}
+              </View>
               <TouchableOpacity onPress={() => onNavigate('notifications')}>
                 <Text style={styles.seeAll}>See all</Text>
               </TouchableOpacity>
             </View>
-            {recentNotifications.map((n) => (
-              <TouchableOpacity
-                key={n.id}
-                style={[styles.notifPreviewCard, !n.read && styles.notifPreviewCardUnread]}
-                onPress={() => onNavigate('notifications')}
-              >
-                <Text style={styles.notifPreviewIcon}>{NOTIF_ICON[n.type] || '🔔'}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.notifPreviewCardTitle} numberOfLines={1}>{n.title}</Text>
-                  {!!n.body && <Text style={styles.notifPreviewCardBody} numberOfLines={1}>{n.body}</Text>}
-                </View>
-                <Text style={styles.notifPreviewTime}>{notifTimeAgo(n.createdAt)}</Text>
-              </TouchableOpacity>
-            ))}
+            {recentNotifications.map((n) => {
+              const justArrived = justArrivedIds.includes(n.id);
+              return (
+                <TouchableOpacity
+                  key={n.id}
+                  style={[
+                    styles.notifPreviewCard,
+                    !n.read && styles.notifPreviewCardUnread,
+                    justArrived && styles.notifPreviewCardJustArrived,
+                  ]}
+                  onPress={() => onNavigate('notifications')}
+                >
+                  <Text style={styles.notifPreviewIcon}>{NOTIF_ICON[n.type] || '🔔'}</Text>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={styles.notifPreviewCardTitle} numberOfLines={1}>{n.title}</Text>
+                      {justArrived && <Text style={styles.notifJustArrivedTag}>NEW</Text>}
+                    </View>
+                    {!!n.body && <Text style={styles.notifPreviewCardBody} numberOfLines={1}>{n.body}</Text>}
+                  </View>
+                  <Text style={styles.notifPreviewTime}>{notifTimeAgo(n.createdAt)}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
 
@@ -529,9 +588,11 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', position: 'relative',
   },
   bellDot: {
-    position: 'absolute', top: 8, right: 9, width: 9, height: 9, borderRadius: 5,
+    position: 'absolute', top: 5, right: 5, minWidth: 16, height: 16, borderRadius: 8,
     backgroundColor: '#B4463B', borderWidth: 1.5, borderColor: '#fff',
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3,
   },
+  bellDotText: { color: '#fff', fontSize: 9, fontWeight: '800' },
   greetingBlock: { paddingHorizontal: 20, marginTop: 6, marginBottom: 18 },
   loginBanner: { backgroundColor: COLORS.gold, borderRadius: 12, padding: 12, marginTop: 12 },
   loginBannerText: { color: '#fff', fontWeight: '700', fontSize: 12.5 },
@@ -590,6 +651,15 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.line,
   },
   notifPreviewCardUnread: { borderColor: COLORS.sageDark, backgroundColor: COLORS.sageLight },
+  notifPreviewCardJustArrived: { borderColor: COLORS.gold, borderWidth: 1.5, backgroundColor: '#FBF3DC' },
+  notifNewPill: {
+    backgroundColor: COLORS.gold, borderRadius: 100, paddingHorizontal: 8, paddingVertical: 2.5,
+  },
+  notifNewPillText: { color: '#fff', fontSize: 10.5, fontWeight: '800' },
+  notifJustArrivedTag: {
+    fontSize: 9, fontWeight: '800', color: '#fff', backgroundColor: COLORS.gold,
+    borderRadius: 100, paddingHorizontal: 6, paddingVertical: 1.5, letterSpacing: 0.5,
+  },
   notifPreviewIcon: { fontSize: 18 },
   notifPreviewCardTitle: { fontSize: 13, fontWeight: '700', color: COLORS.ink },
   notifPreviewCardBody: { fontSize: 11.5, color: COLORS.inkSoft, marginTop: 2 },
