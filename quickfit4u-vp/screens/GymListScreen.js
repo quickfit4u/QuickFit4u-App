@@ -40,6 +40,7 @@ const SORT_OPTIONS = [
   { key: null, label: 'Default' },
   { key: 'distance', label: 'Nearest' },
   { key: 'price', label: 'Price: Low to High' },
+  { key: 'price_desc', label: 'Price: High to Low' },
   { key: 'rating', label: 'Top Rated' },
 ];
 
@@ -58,31 +59,40 @@ const DEFAULT_FILTERS = {
 };
 
 const QUICK_CHIPS = [
-  { key: 'near', label: '⚡ Near & Fast' },
+  { key: 'nearest', label: '📍 Nearest' },
   { key: 'new', label: 'New to you' },
-  { key: 'price', label: '₹ Cheapest' },
+  { key: 'price', label: '₹ Price' },
   { key: 'top', label: '★ Top Rated' },
 ];
 
 function isQuickChipActive(key, f) {
-  if (key === 'near') return f.sortBy === 'distance' && f.openNow;
+  if (key === 'nearest') return f.sortBy === 'distance';
   if (key === 'new') return f.sortBy == null && !f.minRating;
-  if (key === 'price') return f.sortBy === 'price';
+  if (key === 'price') return f.sortBy === 'price' || f.sortBy === 'price_desc';
   if (key === 'top') return f.sortBy === 'rating' && f.minRating === 4;
   return false;
 }
 
+function quickChipLabel(key, f) {
+  if (key === 'price') return f.sortBy === 'price_desc' ? '₹ Price: High to Low' : '₹ Price: Low to High';
+  return QUICK_CHIPS.find((c) => c.key === key).label;
+}
+
 function applyQuickChip(key, f) {
+  if (key === 'price') {
+    // Cycles: off -> Low to High -> High to Low -> off
+    if (f.sortBy === 'price') return { ...f, sortBy: 'price_desc' };
+    if (f.sortBy === 'price_desc') return { ...f, sortBy: null };
+    return { ...f, sortBy: 'price' };
+  }
   // Tapping an active quick chip again turns it off (back to default sort).
   if (isQuickChipActive(key, f)) {
-    if (key === 'near') return { ...f, sortBy: null, openNow: false };
-    if (key === 'price') return { ...f, sortBy: null };
+    if (key === 'nearest') return { ...f, sortBy: null };
     if (key === 'top') return { ...f, sortBy: null, minRating: null };
     return f;
   }
-  if (key === 'near') return { ...f, sortBy: 'distance', openNow: true };
+  if (key === 'nearest') return { ...f, sortBy: 'distance' };
   if (key === 'new') return { ...f, sortBy: null, minRating: null };
-  if (key === 'price') return { ...f, sortBy: 'price' };
   if (key === 'top') return { ...f, sortBy: 'rating', minRating: 4 };
   return f;
 }
@@ -253,13 +263,15 @@ export default function GymListScreen({ onBack, onOpenGym }) {
               key={chip.key}
               style={[styles.quickChip, active && styles.quickChipActive]}
               onPress={async () => {
-                if (chip.key === 'near' && !filters.openNow && !coords) {
+                if (chip.key === 'nearest' && !coords) {
                   await ensureLocation();
                 }
                 setFilters((f) => applyQuickChip(chip.key, f));
               }}
             >
-              <Text style={[styles.quickChipText, active && styles.quickChipTextActive]}>{chip.label}</Text>
+              <Text style={[styles.quickChipText, active && styles.quickChipTextActive]}>
+                {quickChipLabel(chip.key, filters)}
+              </Text>
             </TouchableOpacity>
           );
         })}

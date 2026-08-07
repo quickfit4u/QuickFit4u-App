@@ -603,6 +603,8 @@ router.get('/', (req, res) => {
     results.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
   } else if (sortBy === 'price') {
     results.sort((a, b) => a.hourlyRate - b.hourlyRate);
+  } else if (sortBy === 'price_desc') {
+    results.sort((a, b) => b.hourlyRate - a.hourlyRate);
   } else if (sortBy === 'rating') {
     results.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
   }

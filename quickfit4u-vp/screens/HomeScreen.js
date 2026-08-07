@@ -61,31 +61,37 @@ function getDailyQuote() {
 }
 
 const HOME_QUICK_CHIPS = [
-  { key: 'near', label: '⚡ Near & Fast' },
+  { key: 'nearest', label: '📍 Nearest' },
   { key: 'new', label: 'New to you' },
-  { key: 'price', label: '₹ Cheapest' },
+  { key: 'price', label: '₹ Price' },
   { key: 'top', label: '★ Top Rated' },
 ];
 
-function isHomeChipActive(key, sortBy, openNow) {
-  if (key === 'near') return sortBy === 'distance' && openNow;
+function isHomeChipActive(key, sortBy) {
+  if (key === 'nearest') return sortBy === 'distance';
   if (key === 'new') return sortBy == null;
-  if (key === 'price') return sortBy === 'price';
+  if (key === 'price') return sortBy === 'price' || sortBy === 'price_desc';
   if (key === 'top') return sortBy === 'rating';
   return false;
 }
 
-function applyHomeChip(key, sortBy, openNow) {
-  const active = isHomeChipActive(key, sortBy, openNow);
-  if (active) {
-    // Tapping an active chip again turns it off, back to default nearest-first.
-    return { sortBy: null, openNow: false };
+function homeChipLabel(key, sortBy) {
+  if (key === 'price') return sortBy === 'price_desc' ? '₹ Price: High to Low' : '₹ Price: Low to High';
+  return HOME_QUICK_CHIPS.find((c) => c.key === key).label;
+}
+
+function applyHomeChip(key, sortBy) {
+  if (key === 'price') {
+    // Cycles: off -> Low to High -> High to Low -> off
+    if (sortBy === 'price') return 'price_desc';
+    if (sortBy === 'price_desc') return null;
+    return 'price';
   }
-  if (key === 'near') return { sortBy: 'distance', openNow: true };
-  if (key === 'new') return { sortBy: null, openNow };
-  if (key === 'price') return { sortBy: 'price', openNow };
-  if (key === 'top') return { sortBy: 'rating', openNow };
-  return { sortBy, openNow };
+  if (isHomeChipActive(key, sortBy)) return null; // toggle off back to default
+  if (key === 'nearest') return 'distance';
+  if (key === 'new') return null;
+  if (key === 'top') return 'rating';
+  return sortBy;
 }
 
 export default function HomeScreen({ user, onOpenGym, onLogout, onNavigate, onAccountDeleted }) {
@@ -102,8 +108,7 @@ export default function HomeScreen({ user, onOpenGym, onLogout, onNavigate, onAc
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
-  const [homeSortBy, setHomeSortBy] = useState(null); // null | 'distance' | 'price' | 'rating'
-  const [homeOpenNow, setHomeOpenNow] = useState(false);
+  const [homeSortBy, setHomeSortBy] = useState(null); // null | 'distance' | 'price' | 'price_desc' | 'rating'
   const week = getWeekStrip();
   const quote = getDailyQuote();
   const isSearching = searchQuery.trim().length > 0;
@@ -165,7 +170,6 @@ export default function HomeScreen({ user, onOpenGym, onLogout, onNavigate, onAc
         // The full "Find a Gym" screen (See all) has no such cap.
         maxDistanceKm: atCoords ? 50 : undefined,
         sortBy: homeSortBy || (atCoords ? 'distance' : undefined),
-        openNow: homeOpenNow || undefined,
         minRating: homeSortBy === 'rating' ? 4 : undefined,
       });
       setGyms(results);
@@ -213,7 +217,7 @@ export default function HomeScreen({ user, onOpenGym, onLogout, onNavigate, onAc
   useEffect(() => {
     if (!coordsReady) return;
     fetchNearbyGyms();
-  }, [homeSortBy, homeOpenNow]);
+  }, [homeSortBy]);
 
  
   useEffect(() => {
@@ -350,18 +354,16 @@ export default function HomeScreen({ user, onOpenGym, onLogout, onNavigate, onAc
               <Text style={styles.quickChipCaret}>▾</Text>
             </TouchableOpacity>
             {HOME_QUICK_CHIPS.map((chip) => {
-              const active = isHomeChipActive(chip.key, homeSortBy, homeOpenNow);
+              const active = isHomeChipActive(chip.key, homeSortBy);
               return (
                 <TouchableOpacity
                   key={chip.key}
                   style={[styles.quickChip, active && styles.quickChipActive]}
-                  onPress={() => {
-                    const next = applyHomeChip(chip.key, homeSortBy, homeOpenNow);
-                    setHomeSortBy(next.sortBy);
-                    setHomeOpenNow(next.openNow);
-                  }}
+                  onPress={() => setHomeSortBy((s) => applyHomeChip(chip.key, s))}
                 >
-                  <Text style={[styles.quickChipText, active && styles.quickChipTextActive]}>{chip.label}</Text>
+                  <Text style={[styles.quickChipText, active && styles.quickChipTextActive]}>
+                    {homeChipLabel(chip.key, homeSortBy)}
+                  </Text>
                 </TouchableOpacity>
               );
             })}
