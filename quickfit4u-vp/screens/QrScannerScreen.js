@@ -1,6 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import {
+  Camera,
+  useCameraDevice,
+  useCameraPermission,
+  useCodeScanner,
+} from 'react-native-vision-camera';
 
 const COLORS = {
   ink: '#2B3328',
@@ -11,30 +16,28 @@ const COLORS = {
 
 
 export default function QrScannerScreen({ title, instructions, onBack, onScanned, onManualCode, manualLabel }) {
-  const [permission, requestPermission] = useCameraPermissions();
+  const { hasPermission, requestPermission } = useCameraPermission();
+  const device = useCameraDevice('back');
   const [locked, setLocked] = useState(false);
   const [error, setError] = useState('');
   const [manualMode, setManualMode] = useState(false);
   const [code, setCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [cameraKey, setCameraKey] = useState(0);
   const [cameraReady, setCameraReady] = useState(false);
   const lockRef = useRef(false);
 
-  // Known expo-camera issue: on some Android devices (MIUI/Redmi in particular)
-  // the very first camera mount binds the sensor but never actually attaches a
-  // visible preview surface, leaving it black — even though scanning itself
-  // may still work. Force one silent remount shortly after opening the
-  // screen; the second mount almost always renders correctly.
+  // vision-camera asks for permission itself but doesn't auto-request on mount —
+  // do it once up front so the person isn't stuck on a blank screen.
   useEffect(() => {
-    if (!permission?.granted) return;
-    const t = setTimeout(() => setCameraKey((k) => k + 1), 400);
-    return () => clearTimeout(t);
+    if (!hasPermission) requestPermission();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [permission?.granted]);
+  }, []);
 
-  function handleBarcodeScanned({ data }) {
+  function handleCodeScanned(codes) {
     if (lockRef.current) return;
+    const data = codes?.[0]?.value;
+    if (!data) return;
+
     lockRef.current = true;
     setLocked(true);
     setError('');
@@ -43,7 +46,7 @@ export default function QrScannerScreen({ title, instructions, onBack, onScanned
     try {
       parsed = JSON.parse(data);
     } catch (e) {
-     
+
     }
 
     if (!parsed || parsed.app !== 'QuickFit4u') {
@@ -58,6 +61,11 @@ export default function QrScannerScreen({ title, instructions, onBack, onScanned
     onScanned(parsed);
   }
 
+  const codeScanner = useCodeScanner({
+    codeTypes: ['qr'],
+    onCodeScanned: locked ? () => {} : handleCodeScanned,
+  });
+
   async function handleManualSubmit() {
     if (!code.trim()) return;
     setSubmitting(true);
@@ -68,7 +76,7 @@ export default function QrScannerScreen({ title, instructions, onBack, onScanned
     }
   }
 
-  if (!permission) {
+  if (hasPermission === undefined) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={COLORS.sageDark} />
@@ -76,7 +84,7 @@ export default function QrScannerScreen({ title, instructions, onBack, onScanned
     );
   }
 
-  if (!permission.granted) {
+  if (!hasPermission) {
     return (
       <View style={styles.center}>
         <Text style={styles.permTitle}>Camera access needed</Text>
@@ -120,15 +128,32 @@ export default function QrScannerScreen({ title, instructions, onBack, onScanned
     );
   }
 
+  if (!device) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.permTitle}>No camera found</Text>
+        <Text style={styles.permBody}>This device doesn't have a usable back camera.</Text>
+        {!!onManualCode && (
+          <TouchableOpacity onPress={() => setManualMode(true)} style={{ marginTop: 20 }}>
+            <Text style={styles.manualLink}>Enter the booking code manually instead</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity onPress={onBack} style={{ marginTop: 16 }}>
+          <Text style={styles.backLink}>‹ Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.root}>
-      <CameraView
-        key={cameraKey}
+      <Camera
         style={StyleSheet.absoluteFillObject}
-        facing="back"
-        barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-        onBarcodeScanned={locked ? undefined : handleBarcodeScanned}
-        onCameraReady={() => setCameraReady(true)}
+        device={device}
+        isActive={!manualMode}
+        codeScanner={codeScanner}
+        onInitialized={() => setCameraReady(true)}
+        onError={(e) => setError(`Camera error: ${e.message}`)}
       />
 
       <View style={styles.overlay}>
@@ -165,9 +190,6 @@ export default function QrScannerScreen({ title, instructions, onBack, onScanned
             <Text style={styles.manualBtnText}>Trouble scanning? Enter code manually</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity onPress={() => { setCameraReady(false); setCameraKey((k) => k + 1); }} style={{ marginTop: 10 }}>
-          <Text style={styles.manualLink}>Camera stuck or black? Tap to reload</Text>
-        </TouchableOpacity>
       </View>
     </View>
   );

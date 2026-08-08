@@ -32,10 +32,10 @@
     },
     "plugins": [
       [
-        "expo-camera",
+        "react-native-vision-camera",
         {
-          "cameraPermission": "QuickFit4u uses your camera to scan QR codes for gym check-in.",
-          "barcodeScannerEnabled": true
+          "cameraPermissionText": "QuickFit4u uses your camera to scan QR codes for gym check-in.",
+          "enableMicrophonePermission": false
         }
       ]
     ],
