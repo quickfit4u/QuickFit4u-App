@@ -1,11 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
-import {
-  Camera,
-  useCameraDevice,
-  useCameraPermission,
-  useCodeScanner,
-} from 'react-native-vision-camera';
+import { WebView } from 'react-native-webview';
 
 const COLORS = {
   ink: '#2B3328',
@@ -14,57 +9,133 @@ const COLORS = {
   cream: '#F5F1E6',
 };
 
+// Runs entirely inside the WebView. Uses the browser's own camera pathway
+// (getUserMedia) instead of a native RN camera module, and the browser's
+// built-in BarcodeDetector API to read QR codes from the live video feed.
+// This sidesteps native Camera2/CameraX preview-binding issues entirely,
+// since it's a completely different rendering pipeline.
+const SCANNER_HTML = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <style>
+    html, body { margin: 0; padding: 0; background: #000; overflow: hidden; height: 100%; width: 100%; }
+    video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+  </style>
+</head>
+<body>
+  <video id="video" autoplay muted playsinline></video>
+  <script>
+    function send(type, payload) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type, payload }));
+    }
+
+    async function start() {
+      if (!('BarcodeDetector' in window)) {
+        send('unsupported', null);
+        return;
+      }
+
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } },
+          audio: false,
+        });
+      } catch (e) {
+        send('camera_error', e.message || String(e));
+        return;
+      }
+
+      const video = document.getElementById('video');
+      video.srcObject = stream;
+      await video.play();
+      send('ready', null);
+
+      const detector = new BarcodeDetector({ formats: ['qr_code'] });
+      let busy = false;
+
+      setInterval(async () => {
+        if (busy) return;
+        busy = true;
+        try {
+          const codes = await detector.detect(video);
+          if (codes.length > 0) {
+            send('scanned', codes[0].rawValue);
+          }
+        } catch (e) {
+          // transient decode errors are normal between frames, ignore
+        }
+        busy = false;
+      }, 350);
+    }
+
+    start();
+  </script>
+</body>
+</html>
+`;
 
 export default function QrScannerScreen({ title, instructions, onBack, onScanned, onManualCode, manualLabel }) {
-  const { hasPermission, requestPermission } = useCameraPermission();
-  const device = useCameraDevice('back');
   const [locked, setLocked] = useState(false);
   const [error, setError] = useState('');
   const [manualMode, setManualMode] = useState(false);
   const [code, setCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
+  const [unsupported, setUnsupported] = useState(false);
   const lockRef = useRef(false);
 
-  // vision-camera asks for permission itself but doesn't auto-request on mount —
-  // do it once up front so the person isn't stuck on a blank screen.
-  useEffect(() => {
-    if (!hasPermission) requestPermission();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function handleCodeScanned(codes) {
-    if (lockRef.current) return;
-    const data = codes?.[0]?.value;
-    if (!data) return;
-
-    lockRef.current = true;
-    setLocked(true);
-    setError('');
-
-    let parsed = null;
+  function handleWebViewMessage(event) {
+    let msg;
     try {
-      parsed = JSON.parse(data);
+      msg = JSON.parse(event.nativeEvent.data);
     } catch (e) {
-
-    }
-
-    if (!parsed || parsed.app !== 'QuickFit4u') {
-      setError("That doesn't look like a QuickFit4u QR code. Try again.");
-      setTimeout(() => {
-        lockRef.current = false;
-        setLocked(false);
-      }, 1500);
       return;
     }
 
-    onScanned(parsed);
-  }
+    if (msg.type === 'ready') {
+      setCameraReady(true);
+      return;
+    }
 
-  const codeScanner = useCodeScanner({
-    codeTypes: ['qr'],
-    onCodeScanned: locked ? () => {} : handleCodeScanned,
-  });
+    if (msg.type === 'unsupported') {
+      setUnsupported(true);
+      setManualMode(true);
+      return;
+    }
+
+    if (msg.type === 'camera_error') {
+      setError('Could not access the camera: ' + msg.payload);
+      return;
+    }
+
+    if (msg.type === 'scanned') {
+      if (lockRef.current) return;
+      lockRef.current = true;
+      setLocked(true);
+      setError('');
+
+      let parsed = null;
+      try {
+        parsed = JSON.parse(msg.payload);
+      } catch (e) {
+
+      }
+
+      if (!parsed || parsed.app !== 'QuickFit4u') {
+        setError("That doesn't look like a QuickFit4u QR code. Try again.");
+        setTimeout(() => {
+          lockRef.current = false;
+          setLocked(false);
+        }, 1500);
+        return;
+      }
+
+      onScanned(parsed);
+    }
+  }
 
   async function handleManualSubmit() {
     if (!code.trim()) return;
@@ -76,39 +147,15 @@ export default function QrScannerScreen({ title, instructions, onBack, onScanned
     }
   }
 
-  if (hasPermission === undefined) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={COLORS.sageDark} />
-      </View>
-    );
-  }
-
-  if (!hasPermission) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.permTitle}>Camera access needed</Text>
-        <Text style={styles.permBody}>QuickFit4u needs your camera to scan QR codes for check-in.</Text>
-        <TouchableOpacity style={styles.permBtn} onPress={requestPermission}>
-          <Text style={styles.permBtnText}>Grant Camera Access</Text>
-        </TouchableOpacity>
-        {!!onManualCode && (
-          <TouchableOpacity onPress={() => setManualMode(true)} style={{ marginTop: 20 }}>
-            <Text style={styles.manualLink}>Or enter the booking code manually</Text>
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity onPress={onBack} style={{ marginTop: 16 }}>
-          <Text style={styles.backLink}>‹ Back</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
   if (manualMode) {
     return (
       <KeyboardAvoidingView style={styles.center} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Text style={styles.permTitle}>Enter Booking Code</Text>
-        <Text style={styles.permBody}>{manualLabel || 'Type the code shown on the booking (e.g. FI-123456).'}</Text>
+        <Text style={styles.permBody}>
+          {unsupported
+            ? "This device's browser engine doesn't support QR scanning. Use the code instead:"
+            : (manualLabel || 'Type the code shown on the booking (e.g. FI-123456).')}
+        </Text>
         <TextInput
           style={styles.codeInput}
           value={code}
@@ -121,42 +168,35 @@ export default function QrScannerScreen({ title, instructions, onBack, onScanned
         <TouchableOpacity style={styles.permBtn} onPress={handleManualSubmit} disabled={submitting || !code.trim()}>
           {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.permBtnText}>Check In</Text>}
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => setManualMode(false)} style={{ marginTop: 16 }}>
-          <Text style={styles.backLink}>‹ Back to scanning</Text>
-        </TouchableOpacity>
-      </KeyboardAvoidingView>
-    );
-  }
-
-  if (!device) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.permTitle}>No camera found</Text>
-        <Text style={styles.permBody}>This device doesn't have a usable back camera.</Text>
-        {!!onManualCode && (
-          <TouchableOpacity onPress={() => setManualMode(true)} style={{ marginTop: 20 }}>
-            <Text style={styles.manualLink}>Enter the booking code manually instead</Text>
+        {!unsupported && (
+          <TouchableOpacity onPress={() => setManualMode(false)} style={{ marginTop: 16 }}>
+            <Text style={styles.backLink}>‹ Back to scanning</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity onPress={onBack} style={{ marginTop: 16 }}>
-          <Text style={styles.backLink}>‹ Back</Text>
-        </TouchableOpacity>
-      </View>
+        {unsupported && (
+          <TouchableOpacity onPress={onBack} style={{ marginTop: 16 }}>
+            <Text style={styles.backLink}>‹ Back</Text>
+          </TouchableOpacity>
+        )}
+      </KeyboardAvoidingView>
     );
   }
 
   return (
     <View style={styles.root}>
-      <Camera
+      <WebView
+        source={{ html: SCANNER_HTML }}
         style={StyleSheet.absoluteFillObject}
-        device={device}
-        isActive={!manualMode}
-        codeScanner={codeScanner}
-        onInitialized={() => setCameraReady(true)}
-        onError={(e) => setError(`Camera error: ${e.message}`)}
+        onMessage={handleWebViewMessage}
+        javaScriptEnabled
+        domStorageEnabled
+        allowsInlineMediaPlayback
+        mediaPlaybackRequiresUserAction={false}
+        mediaCapturePermissionGrantType="grant"
+        originWhitelist={['*']}
       />
 
-      <View style={styles.overlay}>
+      <View style={styles.overlay} pointerEvents="box-none">
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
           <Text style={styles.backBtnText}>‹ Back</Text>
         </TouchableOpacity>
@@ -164,7 +204,7 @@ export default function QrScannerScreen({ title, instructions, onBack, onScanned
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.instructions}>{instructions}</Text>
 
-        <View style={styles.frame}>
+        <View style={styles.frame} pointerEvents="none">
           {!cameraReady && (
             <View style={styles.frameLoading}>
               <ActivityIndicator color={COLORS.gold} />
