@@ -332,17 +332,19 @@ router.get('/mine/dashboard', requireAuth, requireRole('owner'), (req, res) => {
   // Pending payout = money collected from members that admin hasn't
   // settled to the owner yet. Mirrors pendingPayoutFor() in routes/admin.js
   // so the owner's dashboard stays in sync with what admin sees/settles.
-  const pendingPayoutRow = gym.last_payout_at
-    ? db
-        .prepare(
-          `SELECT COALESCE(SUM(amount), 0) AS total FROM bookings
-           WHERE gym_id = ? AND payment_status = 'paid' AND created_at > ?`
-        )
-        .get(gym.id, gym.last_payout_at)
-    : db
-        .prepare(`SELECT COALESCE(SUM(amount), 0) AS total FROM bookings WHERE gym_id = ? AND payment_status = 'paid'`)
-        .get(gym.id);
-  const pendingPayoutRupees = pendingPayoutRow.total || 0;
+  // Uses total-collected-minus-total-paid-out rather than a "since last
+  // payout timestamp" cutoff — comparing against gym.last_payout_at as a
+  // text cutoff was silently dropping same-day payments because SQLite's
+  // datetime('now') format ("2026-08-08 14:33:00") and JS's
+  // toISOString() format ("2026-08-08T14:33:00.000Z") sort differently
+  // as plain text, so same-day amounts never compared as "after" it.
+  const collectedRow = db
+    .prepare(`SELECT COALESCE(SUM(amount), 0) AS total FROM bookings WHERE gym_id = ? AND payment_status = 'paid'`)
+    .get(gym.id);
+  const paidOutRow = db
+    .prepare(`SELECT COALESCE(SUM(amount), 0) AS total FROM payouts WHERE gym_id = ?`)
+    .get(gym.id);
+  const pendingPayoutRupees = (collectedRow.total || 0) - (paidOutRow.total || 0);
 
   const lastPayoutRow = db
     .prepare(`SELECT amount, created_at FROM payouts WHERE gym_id = ? ORDER BY created_at DESC LIMIT 1`)
