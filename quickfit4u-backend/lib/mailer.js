@@ -1,5 +1,3 @@
-
-
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const FROM_ADDRESS = process.env.SMTP_FROM || 'QuickFit4u <onboarding@resend.dev>';
 
@@ -108,4 +106,44 @@ async function sendBookingQrEmail(toEmail, gymName, dateStr, hourLabel, qrDataUr
   });
 }
 
-module.exports = { sendOtpEmail, sendGymQrEmail, sendBookingQrEmail };
+async function sendComplaintEmail({ toEmail, name, email, role, category, subject, message, gymName, bookingCode }) {
+  const contextLines = [
+    gymName ? `Gym: ${gymName}` : null,
+    bookingCode ? `Booking: ${bookingCode}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  await sendEmail({
+    to: toEmail,
+    subject: `[QuickFit4u ${role === 'owner' ? 'Owner' : 'Member'} Feedback] ${subject}`,
+    text: `From: ${name} <${email}> (${role})\n${contextLines}\nCategory: ${category}\n\n${message}`,
+    html: `
+      <div style="font-family: sans-serif; padding: 24px; color: #2B3328;">
+        <h2 style="margin-bottom: 8px;">New ${role} feedback / complaint</h2>
+        <p><strong>${name}</strong> &lt;${email}&gt; (${role})</p>
+        ${contextLines ? `<p style="color:#6B7566;font-size:13px;">${contextLines}</p>` : ''}
+        <p><strong>Category:</strong> ${category}</p>
+        <p><strong>Subject:</strong> ${subject}</p>
+        <div style="white-space:pre-wrap;background:#F5F1E6;padding:14px;border-radius:8px;margin-top:8px;">${message}</div>
+      </div>
+    `,
+  });
+}
+
+async function sendComplaintReceivedEmail(toEmail, name, subject) {
+  await sendEmail({
+    to: toEmail,
+    subject: `We've received your message — QuickFit4u`,
+    text: `Hi ${name}, thanks for reaching out about "${subject}". Our team will get back to you soon.`,
+    html: `
+      <div style="font-family: sans-serif; padding: 24px; color: #2B3328;">
+        <h2 style="margin-bottom: 8px;">QuickFit4u</h2>
+        <p>Hi ${name}, thanks for reaching out about <strong>${subject}</strong>.</p>
+        <p>Our team has received your message and will get back to you soon.</p>
+      </div>
+    `,
+  });
+}
+
+module.exports = { sendOtpEmail, sendGymQrEmail, sendBookingQrEmail, sendComplaintEmail, sendComplaintReceivedEmail };

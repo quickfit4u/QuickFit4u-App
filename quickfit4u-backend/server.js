@@ -12,6 +12,7 @@ const gymRoutes = require('./routes/gyms');
 const bookingRoutes = require('./routes/bookings');
 const notificationRoutes = require('./routes/notifications');
 const adminRoutes = require('./routes/admin');
+const complaintRoutes = require('./routes/complaints');
 const { startScheduler } = require('./lib/scheduler');
 
 const app = express();
@@ -29,6 +30,7 @@ app.use('/api/gyms', gymRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/complaints', complaintRoutes);
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 

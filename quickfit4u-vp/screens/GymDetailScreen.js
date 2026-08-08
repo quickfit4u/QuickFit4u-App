@@ -495,6 +495,13 @@ export default function GymDetailScreen({ gym: gymStub, user, onBack }) {
             <Text style={styles.modalSub}>
               Payment received for {bookingResult?.gymName} — {bookingResult?.date} at {bookingResult?.hour}. Your booking QR has also been emailed to you.
             </Text>
+            {!!bookingResult?.discountRupees && bookingResult.discountRupees > 0 && (
+              <View style={styles.couponAppliedBox}>
+                <Text style={styles.couponAppliedText}>
+                  🎟️ Coupon {bookingResult.couponCode} applied — ₹{bookingResult.discountRupees} off. You paid ₹{bookingResult.amount}.
+                </Text>
+              </View>
+            )}
             {!!bookingResult?.qrDataUrl && (
               <Image source={{ uri: bookingResult.qrDataUrl }} style={styles.qrImage} resizeMode="contain" />
             )}
@@ -628,6 +635,8 @@ const styles = StyleSheet.create({
   modalIcon: { width: 52, height: 52, borderRadius: 14, backgroundColor: COLORS.sageLight, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
   modalTitle: { fontSize: 20, fontWeight: '700', color: COLORS.ink, marginBottom: 6 },
   modalSub: { fontSize: 13, color: COLORS.inkSoft, textAlign: 'center', marginBottom: 20, lineHeight: 19 },
+  couponAppliedBox: { backgroundColor: COLORS.sageLight, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14, marginBottom: 16, alignSelf: 'stretch' },
+  couponAppliedText: { fontSize: 12.5, color: COLORS.sageDark, fontWeight: '700', textAlign: 'center' },
   qrBox: { width: 110, height: 110, borderRadius: 12, backgroundColor: COLORS.ink, marginBottom: 14 },
   qrImage: { width: 150, height: 150, borderRadius: 12, marginBottom: 14, backgroundColor: '#fff' },
   bookingCode: { fontSize: 18, fontWeight: '700', color: COLORS.sageDark, letterSpacing: 1.5, marginBottom: 22 },

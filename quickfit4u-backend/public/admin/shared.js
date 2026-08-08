@@ -1,5 +1,3 @@
-
-
 const NAV_ITEMS = [
   { href: 'dashboard.html', label: 'Dashboard' },
   { href: 'users.html', label: 'Users' },
@@ -8,12 +6,13 @@ const NAV_ITEMS = [
   { href: 'payments.html', label: 'Payments' },
   { href: 'payouts.html', label: 'Payouts' },
   { href: 'coupons.html', label: 'Coupons' },
+  { href: 'complaints.html', label: 'Complaints' },
   { href: 'reviews.html', label: 'Reviews' },
   { href: 'notifications.html', label: 'Notifications' },
   { href: 'analytics.html', label: 'Analytics' },
 ];
 
-const COMING_SOON_ITEMS = ['Complaints', 'Support Tickets'];
+const COMING_SOON_ITEMS = ['Support Tickets'];
 
 function requireAdminAuth() {
   const token = localStorage.getItem('quickfit4u_admin_token');

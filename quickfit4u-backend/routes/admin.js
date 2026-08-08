@@ -493,4 +493,180 @@ router.post('/payouts/:gymId/settle', (req, res) => {
   res.json({ ok: true, amountRupees: pending });
 });
 
+
+// ---------- Coupons (backs public/admin/coupons.html) ----------
+router.get('/coupons', (req, res) => {
+  const { search, status } = req.query;
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const pageSize = 20;
+
+  let sql = `SELECT * FROM coupons WHERE 1=1`;
+  const params = [];
+
+  if (search && search.trim()) {
+    sql += ` AND code LIKE ? COLLATE NOCASE`;
+    params.push(`%${search.trim()}%`);
+  }
+  if (status === 'active') sql += ` AND active = 1 AND (expires_at IS NULL OR expires_at > datetime('now'))`;
+  else if (status === 'inactive') sql += ` AND active = 0`;
+  else if (status === 'expired') sql += ` AND expires_at IS NOT NULL AND expires_at <= datetime('now')`;
+
+  const countRow = db.prepare(`SELECT COUNT(*) AS c FROM (${sql})`).get(...params);
+  sql += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
+  const rows = db.prepare(sql).all(...params, pageSize, (page - 1) * pageSize);
+
+  res.json({
+    total: countRow.c,
+    page,
+    pageSize,
+    coupons: rows.map((c) => ({
+      id: c.id,
+      code: c.code,
+      type: c.type,
+      value: c.value,
+      maxUses: c.max_uses,
+      usedCount: c.used_count,
+      active: !!c.active,
+      expiresAt: c.expires_at,
+      createdAt: c.created_at,
+    })),
+  });
+});
+
+router.post('/coupons', (req, res) => {
+  const { code, type, value, maxUses, expiresAt } = req.body || {};
+
+  const cleanCode = (code || '').trim().toUpperCase();
+  if (!cleanCode) return res.status(400).json({ error: 'Code is required.' });
+  if (!/^[A-Z0-9_-]{3,20}$/.test(cleanCode)) {
+    return res.status(400).json({ error: 'Code must be 3-20 letters/numbers (no spaces).' });
+  }
+  if (!['percent', 'flat'].includes(type)) return res.status(400).json({ error: "Type must be 'percent' or 'flat'." });
+
+  const numValue = Number(value);
+  if (!Number.isFinite(numValue) || numValue <= 0) return res.status(400).json({ error: 'Value must be a positive number.' });
+  if (type === 'percent' && numValue > 100) return res.status(400).json({ error: 'Percent off cannot exceed 100.' });
+
+  let numMaxUses = null;
+  if (maxUses !== null && maxUses !== undefined && maxUses !== '') {
+    numMaxUses = parseInt(maxUses, 10);
+    if (!Number.isInteger(numMaxUses) || numMaxUses < 1) return res.status(400).json({ error: 'Max uses must be a positive whole number.' });
+  }
+
+  let expiresAtIso = null;
+  if (expiresAt) {
+    const d = new Date(expiresAt);
+    if (isNaN(d.getTime())) return res.status(400).json({ error: 'Invalid expiry date.' });
+    d.setHours(23, 59, 59, 999);
+    expiresAtIso = d.toISOString();
+  }
+
+  const existing = db.prepare('SELECT id FROM coupons WHERE code = ? COLLATE NOCASE').get(cleanCode);
+  if (existing) return res.status(409).json({ error: 'A coupon with this code already exists.' });
+
+  const id = uuid();
+  db.prepare(
+    `INSERT INTO coupons (id, code, type, value, max_uses, expires_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, cleanCode, type, numValue, numMaxUses, expiresAtIso, req.user.id);
+
+  res.json({ ok: true, id });
+});
+
+router.patch('/coupons/:id', (req, res) => {
+  const coupon = db.prepare('SELECT id FROM coupons WHERE id = ?').get(req.params.id);
+  if (!coupon) return res.status(404).json({ error: 'Coupon not found.' });
+
+  if (typeof req.body?.active !== 'boolean') return res.status(400).json({ error: 'active must be true or false.' });
+  db.prepare('UPDATE coupons SET active = ? WHERE id = ?').run(req.body.active ? 1 : 0, coupon.id);
+  res.json({ ok: true, active: req.body.active });
+});
+
+router.delete('/coupons/:id', (req, res) => {
+  const coupon = db.prepare('SELECT id FROM coupons WHERE id = ?').get(req.params.id);
+  if (!coupon) return res.status(404).json({ error: 'Coupon not found.' });
+  db.prepare('DELETE FROM coupons WHERE id = ?').run(coupon.id);
+  res.json({ ok: true });
+});
+
+
+// ---------- Complaints / feedback (backs public/admin/complaints.html) ----------
+router.get('/complaints', (req, res) => {
+  const { search, status, role } = req.query;
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const pageSize = 20;
+
+  let sql = `SELECT c.*, u.name AS user_name, u.email AS user_email, g.name AS gym_name
+             FROM complaints c
+             JOIN users u ON u.id = c.user_id
+             LEFT JOIN gyms g ON g.id = c.gym_id
+             WHERE 1=1`;
+  const params = [];
+
+  if (status && ['open', 'in_progress', 'resolved'].includes(status)) {
+    sql += ` AND c.status = ?`;
+    params.push(status);
+  }
+  if (role && ['member', 'owner'].includes(role)) {
+    sql += ` AND c.role = ?`;
+    params.push(role);
+  }
+  if (search && search.trim()) {
+    sql += ` AND (c.subject LIKE ? COLLATE NOCASE OR c.message LIKE ? COLLATE NOCASE OR u.name LIKE ? COLLATE NOCASE OR u.email LIKE ? COLLATE NOCASE)`;
+    const term = `%${search.trim()}%`;
+    params.push(term, term, term, term);
+  }
+
+  const countRow = db.prepare(`SELECT COUNT(*) AS c FROM (${sql})`).get(...params);
+  sql += ` ORDER BY c.created_at DESC LIMIT ? OFFSET ?`;
+  const rows = db.prepare(sql).all(...params, pageSize, (page - 1) * pageSize);
+
+  res.json({
+    total: countRow.c,
+    page,
+    pageSize,
+    complaints: rows.map((c) => ({
+      id: c.id,
+      role: c.role,
+      category: c.category,
+      subject: c.subject,
+      message: c.message,
+      status: c.status,
+      emailSent: !!c.email_sent,
+      adminNote: c.admin_note,
+      userName: c.user_name,
+      userEmail: c.user_email,
+      gymName: c.gym_name,
+      createdAt: c.created_at,
+    })),
+  });
+});
+
+router.patch('/complaints/:id', (req, res) => {
+  const complaint = db.prepare('SELECT id FROM complaints WHERE id = ?').get(req.params.id);
+  if (!complaint) return res.status(404).json({ error: 'Complaint not found.' });
+
+  const { status, adminNote } = req.body || {};
+  if (status && !['open', 'in_progress', 'resolved'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid status.' });
+  }
+
+  const updates = [];
+  const params = [];
+  if (status) {
+    updates.push('status = ?');
+    params.push(status);
+  }
+  if (adminNote !== undefined) {
+    updates.push('admin_note = ?');
+    params.push(adminNote || null);
+  }
+  if (!updates.length) return res.status(400).json({ error: 'Nothing to update.' });
+
+  updates.push(`updated_at = datetime('now')`);
+  params.push(complaint.id);
+  db.prepare(`UPDATE complaints SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+  res.json({ ok: true });
+});
+
 module.exports = router;

@@ -463,3 +463,22 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `);
+
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS complaints (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    role TEXT NOT NULL CHECK (role IN ('member', 'owner')),
+    category TEXT NOT NULL DEFAULT 'other',   -- 'booking' | 'payment' | 'gym' | 'app' | 'other'
+    subject TEXT NOT NULL,
+    message TEXT NOT NULL,
+    gym_id TEXT REFERENCES gyms(id),
+    booking_id TEXT REFERENCES bookings(id),
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'resolved')),
+    email_sent INTEGER NOT NULL DEFAULT 0,
+    admin_note TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT
+  );
+`);

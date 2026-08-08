@@ -287,6 +287,21 @@ export async function signAgreement({ signedName, signatureUrl, accepted }) {
   return data.gym; 
 }
 
+// ---------- Complaints / feedback (member + owner, emailed to support) ----------
+
+export async function submitComplaint({ subject, message, category, gymId, bookingId }) {
+  return request('/api/complaints', {
+    method: 'POST',
+    auth: true,
+    body: { subject, message, category, gymId, bookingId },
+  });
+}
+
+export async function fetchMyComplaints() {
+  const data = await request('/api/complaints/mine', { auth: true });
+  return data.complaints;
+}
+
 // ---------- Admin ----------
 
 export async function fetchAdminStats() {

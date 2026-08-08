@@ -553,6 +553,7 @@ export default function HomeScreen({ user, onOpenGym, onLogout, onNavigate, onAc
               <MenuItem label="Scan Gym QR" onPress={() => { setMenuOpen(false); onNavigate('memberScanQr'); }} />
             )}
             <MenuItem label="How it Works" onPress={() => { setMenuOpen(false); onNavigate('howItWorks'); }} />
+            <MenuItem label="Help & Feedback" onPress={() => { setMenuOpen(false); onNavigate('feedback'); }} />
             <MenuItem label="Settings" onPress={() => { setMenuOpen(false); onNavigate('settings'); }} />
             <MenuItem label="Privacy Policy" onPress={() => { setMenuOpen(false); onNavigate('privacyPolicy'); }} />
             <MenuItem label="Terms & Conditions" onPress={() => { setMenuOpen(false); onNavigate('termsConditions'); }} />

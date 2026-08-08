@@ -20,6 +20,7 @@ import QrScannerScreen from './screens/QrScannerScreen';
 import NotificationsScreen from './screens/NotificationsScreen';
 import OwnerRequestsScreen from './screens/OwnerRequestsScreen';
 import ProfileScreen from './screens/ProfileScreen';
+import FeedbackScreen from './screens/FeedbackScreen';
 import StaticInfoScreen from './screens/StaticInfoScreen';
 import AdminHomeScreen from './screens/AdminHomeScreen';
 import AdminGymsScreen from './screens/AdminGymsScreen';
@@ -42,12 +43,6 @@ const SETTINGS_SECTIONS = [
 export default function App() {
   const [screen, setScreen] = useState('splash');
 
-  // Tracks which screen we came from, purely by watching `screen` change —
-  // doesn't require touching any of the many setScreen(...) call sites
-  // scattered through this file. Android's hardware back button had no
-  // handler at all before this, so it fell through to the OS default
-  // (exit straight to the phone's home screen) instead of navigating back
-  // within the app.
   const screenHistoryRef = useRef([]);
   const prevScreenRef = useRef('splash');
 
@@ -314,6 +309,10 @@ export default function App() {
         onUserUpdated={(updatedUser) => setUser(updatedUser)}
       />
     );
+  }
+
+  if (screen === 'feedback') {
+    return <FeedbackScreen user={user} onBack={() => setScreen(homeScreenFor())} />;
   }
 
   // ---------- Gym owner screens ----------
