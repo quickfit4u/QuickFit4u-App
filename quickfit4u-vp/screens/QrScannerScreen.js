@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
@@ -18,7 +18,20 @@ export default function QrScannerScreen({ title, instructions, onBack, onScanned
   const [code, setCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [cameraKey, setCameraKey] = useState(0);
+  const [cameraReady, setCameraReady] = useState(false);
   const lockRef = useRef(false);
+
+  // Known expo-camera issue: on some Android devices (MIUI/Redmi in particular)
+  // the very first camera mount binds the sensor but never actually attaches a
+  // visible preview surface, leaving it black — even though scanning itself
+  // may still work. Force one silent remount shortly after opening the
+  // screen; the second mount almost always renders correctly.
+  useEffect(() => {
+    if (!permission?.granted) return;
+    const t = setTimeout(() => setCameraKey((k) => k + 1), 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permission?.granted]);
 
   function handleBarcodeScanned({ data }) {
     if (lockRef.current) return;
@@ -115,6 +128,7 @@ export default function QrScannerScreen({ title, instructions, onBack, onScanned
         facing="back"
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         onBarcodeScanned={locked ? undefined : handleBarcodeScanned}
+        onCameraReady={() => setCameraReady(true)}
       />
 
       <View style={styles.overlay}>
@@ -125,7 +139,14 @@ export default function QrScannerScreen({ title, instructions, onBack, onScanned
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.instructions}>{instructions}</Text>
 
-        <View style={styles.frame} />
+        <View style={styles.frame}>
+          {!cameraReady && (
+            <View style={styles.frameLoading}>
+              <ActivityIndicator color={COLORS.gold} />
+              <Text style={styles.frameLoadingText}>Starting camera…</Text>
+            </View>
+          )}
+        </View>
 
         {!!error && (
           <View style={styles.errorBox}>
@@ -144,7 +165,7 @@ export default function QrScannerScreen({ title, instructions, onBack, onScanned
             <Text style={styles.manualBtnText}>Trouble scanning? Enter code manually</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity onPress={() => setCameraKey((k) => k + 1)} style={{ marginTop: 10 }}>
+        <TouchableOpacity onPress={() => { setCameraReady(false); setCameraKey((k) => k + 1); }} style={{ marginTop: 10 }}>
           <Text style={styles.manualLink}>Camera stuck or black? Tap to reload</Text>
         </TouchableOpacity>
       </View>
@@ -161,8 +182,10 @@ const styles = StyleSheet.create({
   instructions: { color: '#e8e8e0', fontSize: 13.5, textAlign: 'center', marginTop: 8, paddingHorizontal: 20 },
   frame: {
     width: 240, height: 240, borderRadius: 20, borderWidth: 3, borderColor: COLORS.gold,
-    marginTop: 50,
+    marginTop: 50, alignItems: 'center', justifyContent: 'center',
   },
+  frameLoading: { alignItems: 'center', gap: 8 },
+  frameLoadingText: { color: '#fff', fontSize: 12.5, fontWeight: '600' },
   errorBox: { marginTop: 30, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 12, padding: 14, maxWidth: '85%' },
   errorText: { color: '#fff', fontSize: 13.5, textAlign: 'center' },
   center: { flex: 1, backgroundColor: COLORS.cream, alignItems: 'center', justifyContent: 'center', padding: 30 },
