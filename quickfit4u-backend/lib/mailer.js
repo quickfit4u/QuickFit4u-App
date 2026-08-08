@@ -106,7 +106,7 @@ async function sendBookingQrEmail(toEmail, gymName, dateStr, hourLabel, qrDataUr
   });
 }
 
-async function sendComplaintEmail({ toEmail, name, email, role, category, subject, message, gymName, bookingCode }) {
+async function sendComplaintEmail({ toEmail, name, email, role, category, subject, message, gymName, bookingCode, attachments }) {
   const contextLines = [
     gymName ? `Gym: ${gymName}` : null,
     bookingCode ? `Booking: ${bookingCode}` : null,
@@ -114,10 +114,28 @@ async function sendComplaintEmail({ toEmail, name, email, role, category, subjec
     .filter(Boolean)
     .join(' · ');
 
+  const files = Array.isArray(attachments) ? attachments : [];
+  const attachmentTextBlock = files.length
+    ? `\n\nAttachments (${files.length}):\n${files.map((a) => `- ${a.name}: ${a.url}`).join('\n')}`
+    : '';
+  const attachmentHtmlBlock = files.length
+    ? `
+        <p style="margin-top:14px;"><strong>Attachments (${files.length}):</strong></p>
+        <ul style="padding-left:18px; margin-top:4px;">
+          ${files
+            .map(
+              (a) =>
+                `<li style="margin-bottom:4px;"><a href="${a.url}" target="_blank" rel="noopener">${a.name}</a></li>`
+            )
+            .join('')}
+        </ul>
+      `
+    : '';
+
   await sendEmail({
     to: toEmail,
     subject: `[QuickFit4u ${role === 'owner' ? 'Owner' : 'Member'} Feedback] ${subject}`,
-    text: `From: ${name} <${email}> (${role})\n${contextLines}\nCategory: ${category}\n\n${message}`,
+    text: `From: ${name} <${email}> (${role})\n${contextLines}\nCategory: ${category}\n\n${message}${attachmentTextBlock}`,
     html: `
       <div style="font-family: sans-serif; padding: 24px; color: #2B3328;">
         <h2 style="margin-bottom: 8px;">New ${role} feedback / complaint</h2>
@@ -126,6 +144,7 @@ async function sendComplaintEmail({ toEmail, name, email, role, category, subjec
         <p><strong>Category:</strong> ${category}</p>
         <p><strong>Subject:</strong> ${subject}</p>
         <div style="white-space:pre-wrap;background:#F5F1E6;padding:14px;border-radius:8px;margin-top:8px;">${message}</div>
+        ${attachmentHtmlBlock}
       </div>
     `,
   });

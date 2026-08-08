@@ -217,6 +217,16 @@ export async function markNotificationRead(id) {
   return request(`/api/notifications/${id}/read`, { method: 'POST', auth: true });
 }
 
+// Works identically for members and gym owners — notifications are scoped to
+// whichever user is logged in.
+export async function deleteNotification(id) {
+  return request(`/api/notifications/${id}`, { method: 'DELETE', auth: true });
+}
+
+export async function clearAllNotifications() {
+  return request('/api/notifications', { method: 'DELETE', auth: true });
+}
+
 // ---------- Gym owner: profile ----------
 
 export async function fetchMyGym() {
@@ -289,11 +299,11 @@ export async function signAgreement({ signedName, signatureUrl, accepted }) {
 
 // ---------- Complaints / feedback (member + owner, emailed to support) ----------
 
-export async function submitComplaint({ subject, message, category, gymId, bookingId }) {
+export async function submitComplaint({ subject, message, category, gymId, bookingId, attachments }) {
   return request('/api/complaints', {
     method: 'POST',
     auth: true,
-    body: { subject, message, category, gymId, bookingId },
+    body: { subject, message, category, gymId, bookingId, attachments },
   });
 }
 

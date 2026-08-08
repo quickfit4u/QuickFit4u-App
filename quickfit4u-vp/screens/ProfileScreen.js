@@ -323,7 +323,8 @@ export default function ProfileScreen({ user, onBack, onLogout, onUserUpdated })
           <Row label="Date of Birth" value={isoToDisplayDate(user?.dateOfBirth) || 'Not added'} />
           <Row label="Emergency Contact" value={user?.emergencyContact || 'Not added'} />
           <Row label="Fitness Goal" value={FITNESS_GOALS.find((g) => g.value === user?.fitnessGoal)?.label || 'Not added'} />
-          <Row label="Blood Group" value={user?.bloodGroup || 'Not added'} last />
+          <Row label="Blood Group" value={user?.bloodGroup || 'Not added'} last={!user?.referredBy} />
+          {!!user?.referredBy && <Row label="Referred By" value={user.referredBy} last />}
         </View>
       )}
 

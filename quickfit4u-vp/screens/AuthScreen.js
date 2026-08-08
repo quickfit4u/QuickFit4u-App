@@ -70,7 +70,7 @@ export default function AuthScreen({ onSkip, onAuthSuccess, onForgotPassword }) 
         name: name.trim(),
         email: email.trim(),
         role,
-        referredBy: role === 'owner' ? referredBy.trim() || undefined : undefined,
+        referredBy: referredBy.trim() || undefined,
       });
       setInfoMsg(res.message);
       setStep('code');
@@ -218,18 +218,16 @@ export default function AuthScreen({ onSkip, onAuthSuccess, onForgotPassword }) 
               />
             </View>
 
-            {role === 'owner' && (
-              <View style={styles.field}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Referral code (optional)"
-                  placeholderTextColor={COLORS.inkSoft}
-                  value={referredBy}
-                  onChangeText={setReferredBy}
-                  autoCapitalize="characters"
-                />
-              </View>
-            )}
+            <View style={styles.field}>
+              <TextInput
+                style={styles.input}
+                placeholder="Referral code (optional)"
+                placeholderTextColor={COLORS.inkSoft}
+                value={referredBy}
+                onChangeText={setReferredBy}
+                autoCapitalize="characters"
+              />
+            </View>
 
             {!!error && (
               <View style={styles.errorBox}>

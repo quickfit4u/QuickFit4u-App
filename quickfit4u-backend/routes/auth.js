@@ -25,6 +25,7 @@ function publicUser(user) {
     email: user.email,
     name: user.name,
     role: user.role,
+    referredBy: user.referred_by || null,
     phone: user.phone || null,
     gender: user.gender || null,
     address: user.address || null,

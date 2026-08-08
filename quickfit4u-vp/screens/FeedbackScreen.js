@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { submitComplaint } from '../lib/api';
+import { uploadImageToCloudinary, uploadFileToCloudinary } from '../lib/cloudinary';
 
 const COLORS = {
   cream: '#F5F1E6',
@@ -21,12 +24,66 @@ const CATEGORIES = [
   { value: 'other', label: 'Other' },
 ];
 
+const MAX_ATTACHMENTS = 5;
+
 export default function FeedbackScreen({ user, onBack }) {
   const [category, setCategory] = useState('other');
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
+  const [attachments, setAttachments] = useState([]); // [{ url, name, type }]
+  const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  async function handleAddPhoto() {
+    setError('');
+    if (attachments.length >= MAX_ATTACHMENTS) return setError(`You can attach up to ${MAX_ATTACHMENTS} files.`);
+
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return setError('Photo library permission is needed to attach a photo.');
+
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
+    if (result.canceled) return;
+
+    setUploading(true);
+    try {
+      const asset = result.assets[0];
+      const url = await uploadImageToCloudinary(asset.uri);
+      setAttachments((prev) => [...prev, { url, name: asset.fileName || 'Photo', type: 'image' }]);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleAddDocument() {
+    setError('');
+    if (attachments.length >= MAX_ATTACHMENTS) return setError(`You can attach up to ${MAX_ATTACHMENTS} files.`);
+
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ['application/pdf', 'image/*', 'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+    if (result.canceled) return;
+
+    setUploading(true);
+    try {
+      const asset = result.assets[0];
+      const { url } = await uploadFileToCloudinary(asset.uri, asset.mimeType, asset.name);
+      setAttachments((prev) => [...prev, { url, name: asset.name || 'Document', type: 'document' }]);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function handleRemoveAttachment(url) {
+    setAttachments((prev) => prev.filter((a) => a.url !== url));
+  }
 
   async function handleSubmit() {
     setError('');
@@ -35,7 +92,7 @@ export default function FeedbackScreen({ user, onBack }) {
 
     setSaving(true);
     try {
-      await submitComplaint({ category, subject: subject.trim(), message: message.trim() });
+      await submitComplaint({ category, subject: subject.trim(), message: message.trim(), attachments });
       Alert.alert(
         'Thanks for letting us know',
         "We've received your message and will get back to you by email soon.",
@@ -43,6 +100,7 @@ export default function FeedbackScreen({ user, onBack }) {
       );
       setSubject('');
       setMessage('');
+      setAttachments([]);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -98,13 +156,39 @@ export default function FeedbackScreen({ user, onBack }) {
         textAlignVertical="top"
       />
 
+      <Text style={[styles.fieldLabel, { marginTop: 14 }]}>Attachments (optional)</Text>
+      <Text style={styles.attachHint}>Add a photo or document as proof — it's included with your message.</Text>
+      <View style={styles.attachRow}>
+        <TouchableOpacity style={styles.attachBtn} onPress={handleAddPhoto} disabled={uploading}>
+          <Text style={styles.attachBtnText}>📷 Add Photo</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.attachBtn} onPress={handleAddDocument} disabled={uploading}>
+          <Text style={styles.attachBtnText}>📄 Add Document</Text>
+        </TouchableOpacity>
+      </View>
+      {uploading && <ActivityIndicator color={COLORS.sageDark} style={{ marginTop: 10 }} />}
+      {attachments.length > 0 && (
+        <View style={styles.attachList}>
+          {attachments.map((a) => (
+            <View key={a.url} style={styles.attachChip}>
+              <Text style={styles.attachChipText} numberOfLines={1}>
+                {a.type === 'image' ? '🖼️' : '📄'} {a.name}
+              </Text>
+              <TouchableOpacity onPress={() => handleRemoveAttachment(a.url)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.attachRemove}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      )}
+
       {!!error && (
         <View style={styles.errorBox}>
           <Text style={styles.errorTextStyle}>{error}</Text>
         </View>
       )}
 
-      <TouchableOpacity style={styles.saveBtn} onPress={handleSubmit} disabled={saving}>
+      <TouchableOpacity style={styles.saveBtn} onPress={handleSubmit} disabled={saving || uploading}>
         {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Send</Text>}
       </TouchableOpacity>
     </ScrollView>
@@ -131,6 +215,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 12, fontSize: 14.5, color: COLORS.ink,
   },
   textArea: { minHeight: 120, paddingTop: 12 },
+  attachHint: { fontSize: 12, color: COLORS.inkSoft, marginBottom: 10, lineHeight: 17 },
+  attachRow: { flexDirection: 'row', gap: 10 },
+  attachBtn: {
+    flex: 1, backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: COLORS.line,
+    paddingVertical: 12, alignItems: 'center',
+  },
+  attachBtnText: { fontSize: 13, fontWeight: '600', color: COLORS.ink },
+  attachList: { marginTop: 12, gap: 8 },
+  attachChip: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: COLORS.sageLight, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10,
+  },
+  attachChipText: { flex: 1, fontSize: 13, color: COLORS.ink, marginRight: 10 },
+  attachRemove: { fontSize: 14, color: COLORS.inkSoft, fontWeight: '700' },
   errorBox: { backgroundColor: COLORS.errorBg, borderRadius: 10, padding: 12, marginTop: 16 },
   errorTextStyle: { color: COLORS.errorText, fontSize: 13, fontWeight: '600' },
   saveBtn: { backgroundColor: COLORS.sageDark, borderRadius: 100, paddingVertical: 16, alignItems: 'center', marginTop: 22 },

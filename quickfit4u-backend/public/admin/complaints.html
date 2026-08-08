@@ -42,6 +42,36 @@
   const statusFilter = document.getElementById('statusFilter');
   const roleFilter = document.getElementById('roleFilter');
 
+  function showComplaintModal(c) {
+    document.getElementById('complaintModalRoot')?.remove();
+    const attachmentsHtml = (c.attachments || []).length
+      ? `<div style="margin-top:14px;"><strong>Attachments (${c.attachments.length}):</strong>
+           <ul style="padding-left:18px;margin-top:6px;">
+             ${c.attachments.map((a) => `<li style="margin-bottom:4px;"><a href="${a.url}" target="_blank" rel="noopener" style="color:var(--sage-dark,#5E7A4E);">${escapeHtml(a.name)}</a></li>`).join('')}
+           </ul></div>`
+      : '';
+    const wrap = document.createElement('div');
+    wrap.id = 'complaintModalRoot';
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px;';
+    wrap.innerHTML = `
+      <div style="background:#fff;border-radius:12px;max-width:520px;width:100%;max-height:80vh;overflow-y:auto;padding:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <h3 style="margin:0 0 4px;">${escapeHtml(c.subject)}</h3>
+          <button id="closeComplaintModal" class="btn btn-ghost" style="padding:4px 10px;">✕</button>
+        </div>
+        <p style="color:var(--ink-soft,#6B7566);font-size:13px;margin:0 0 10px;">
+          ${escapeHtml(c.userName)} &lt;${escapeHtml(c.userEmail)}&gt; · ${c.role} · ${escapeHtml(c.category)}
+        </p>
+        <div style="white-space:pre-wrap;background:#F5F1E6;padding:14px;border-radius:8px;">${escapeHtml(c.message)}</div>
+        ${attachmentsHtml}
+        ${c.adminNote ? `<div style="margin-top:14px;"><strong>Admin note</strong><div style="white-space:pre-wrap;">${escapeHtml(c.adminNote)}</div></div>` : ''}
+      </div>
+    `;
+    document.body.appendChild(wrap);
+    wrap.addEventListener('click', (e) => { if (e.target === wrap) wrap.remove(); });
+    document.getElementById('closeComplaintModal').addEventListener('click', () => wrap.remove());
+  }
+
   function statusPillClass(s) {
     if (s === 'resolved') return 'pill-live';
     if (s === 'in_progress') return 'pill-suspended';
@@ -76,7 +106,7 @@
                 <strong>${escapeHtml(c.subject)}</strong><br>
                 <span style="color:var(--ink-soft);font-size:12px;">${escapeHtml((c.message || '').slice(0, 90))}${c.message && c.message.length > 90 ? '…' : ''}</span>
               </td>
-              <td>${escapeHtml(c.gymName || '—')}</td>
+              <td>${escapeHtml(c.gymName || '—')}${c.attachments && c.attachments.length ? `<br><span style="color:var(--ink-soft);font-size:11px;">📎 ${c.attachments.length} file${c.attachments.length > 1 ? 's' : ''}</span>` : ''}</td>
               <td>
                 <select class="statusSelect" data-id="${c.id}">
                   <option value="open" ${c.status === 'open' ? 'selected' : ''}>Open</option>
@@ -118,12 +148,7 @@
         btn.addEventListener('click', () => {
           const c = data.complaints.find((x) => x.id === btn.dataset.view);
           if (!c) return;
-          alert(
-            `From: ${c.userName} <${c.userEmail}> (${c.role})\n` +
-            `Category: ${c.category}\n` +
-            `Subject: ${c.subject}\n\n${c.message}` +
-            (c.adminNote ? `\n\n— Admin note —\n${c.adminNote}` : '')
-          );
+          showComplaintModal(c);
         });
       });
     } catch (e) {

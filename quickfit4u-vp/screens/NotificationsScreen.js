@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator } from 'react-native';
-import { fetchNotifications, markAllNotificationsRead } from '../lib/api';
+import { View, Text, TouchableOpacity, FlatList, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { fetchNotifications, markAllNotificationsRead, deleteNotification, clearAllNotifications } from '../lib/api';
 
 const COLORS = {
   cream: '#F5F1E6',
@@ -55,6 +55,38 @@ export default function NotificationsScreen({ onBack, onNavigate, role }) {
     }
   }
 
+  async function handleDelete(id) {
+    const prev = notifications;
+    setNotifications((list) => list.filter((n) => n.id !== id));
+    try {
+      await deleteNotification(id);
+    } catch (e) {
+      setNotifications(prev);
+      Alert.alert('Could not delete', e.message);
+    }
+  }
+
+  function handleClearAll() {
+    if (notifications.length === 0) return;
+    Alert.alert('Clear all notifications?', 'This removes every notification and cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear all',
+        style: 'destructive',
+        onPress: async () => {
+          const prev = notifications;
+          setNotifications([]);
+          try {
+            await clearAllNotifications();
+          } catch (e) {
+            setNotifications(prev);
+            Alert.alert('Could not clear notifications', e.message);
+          }
+        },
+      },
+    ]);
+  }
+
   return (
     <View style={styles.root}>
       <View style={styles.header}>
@@ -62,7 +94,9 @@ export default function NotificationsScreen({ onBack, onNavigate, role }) {
           <Text style={styles.back}>‹ Back</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Notifications</Text>
-        <View style={{ width: 44 }} />
+        <TouchableOpacity onPress={handleClearAll} disabled={notifications.length === 0} style={{ width: 60, alignItems: 'flex-end' }}>
+          {notifications.length > 0 && <Text style={styles.clearAll}>Clear all</Text>}
+        </TouchableOpacity>
       </View>
 
       {loading && <ActivityIndicator color={COLORS.sageDark} style={{ marginTop: 30 }} />}
@@ -89,6 +123,13 @@ export default function NotificationsScreen({ onBack, onNavigate, role }) {
                 <Text style={styles.notifTime}>{timeAgo(n.createdAt)}</Text>
               </View>
               {!n.read && <View style={styles.unreadDot} />}
+              <TouchableOpacity
+                onPress={() => handleDelete(n.id)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.deleteBtn}
+              >
+                <Text style={styles.deleteBtnText}>✕</Text>
+              </TouchableOpacity>
             </TouchableOpacity>
           )}
         />
@@ -114,4 +155,7 @@ const styles = StyleSheet.create({
   notifBody: { fontSize: 12.5, color: COLORS.inkSoft, lineHeight: 18, marginBottom: 6 },
   notifTime: { fontSize: 11, color: COLORS.inkSoft },
   unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.gold, marginTop: 4 },
+  clearAll: { fontSize: 12.5, color: COLORS.sageDark, fontWeight: '700' },
+  deleteBtn: { paddingHorizontal: 6, paddingVertical: 2, marginLeft: 4 },
+  deleteBtnText: { fontSize: 14, color: COLORS.inkSoft, fontWeight: '700' },
 });

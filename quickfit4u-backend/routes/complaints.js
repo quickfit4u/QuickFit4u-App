@@ -8,10 +8,25 @@ const router = express.Router();
 
 const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || process.env.SMTP_USER;
 const CATEGORIES = ['booking', 'payment', 'gym', 'app', 'other'];
+const MAX_ATTACHMENTS = 5;
+
+// Attachments are uploaded client-side (to Cloudinary) before this endpoint is
+// called — we only ever receive and store the resulting URLs, never raw files.
+function sanitizeAttachments(input) {
+  if (!Array.isArray(input)) return [];
+  return input
+    .filter((a) => a && typeof a.url === 'string' && /^https:\/\//.test(a.url))
+    .slice(0, MAX_ATTACHMENTS)
+    .map((a) => ({
+      url: a.url,
+      name: typeof a.name === 'string' && a.name.trim() ? a.name.trim().slice(0, 120) : 'Attachment',
+      type: typeof a.type === 'string' ? a.type.slice(0, 30) : 'file',
+    }));
+}
 
 // ---------- Member / owner: submit a complaint or feedback ----------
 router.post('/', requireAuth, async (req, res) => {
-  const { subject, message, category, gymId, bookingId } = req.body || {};
+  const { subject, message, category, gymId, bookingId, attachments } = req.body || {};
 
   if (!subject || !subject.trim()) return res.status(400).json({ error: 'Please add a subject.' });
   if (!message || !message.trim()) return res.status(400).json({ error: 'Please describe the issue.' });
@@ -20,6 +35,7 @@ router.post('/', requireAuth, async (req, res) => {
   }
 
   const cat = CATEGORIES.includes(category) ? category : 'other';
+  const cleanAttachments = sanitizeAttachments(attachments);
   const id = uuid();
 
   const user = db.prepare('SELECT name, email FROM users WHERE id = ?').get(req.user.id);
@@ -35,9 +51,19 @@ router.post('/', requireAuth, async (req, res) => {
   }
 
   db.prepare(
-    `INSERT INTO complaints (id, user_id, role, category, subject, message, gym_id, booking_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(id, req.user.id, req.user.role, cat, subject.trim(), message.trim(), gymId || null, bookingId || null);
+    `INSERT INTO complaints (id, user_id, role, category, subject, message, gym_id, booking_id, attachments)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    req.user.id,
+    req.user.role,
+    cat,
+    subject.trim(),
+    message.trim(),
+    gymId || null,
+    bookingId || null,
+    cleanAttachments.length ? JSON.stringify(cleanAttachments) : null
+  );
 
   let emailSent = false;
   try {
@@ -52,6 +78,7 @@ router.post('/', requireAuth, async (req, res) => {
         message: message.trim(),
         gymName,
         bookingCode,
+        attachments: cleanAttachments,
       });
       emailSent = true;
     }
@@ -80,6 +107,7 @@ router.get('/mine', requireAuth, (req, res) => {
       message: c.message,
       status: c.status,
       adminNote: c.admin_note,
+      attachments: c.attachments ? JSON.parse(c.attachments) : [],
       createdAt: c.created_at,
     })),
   });

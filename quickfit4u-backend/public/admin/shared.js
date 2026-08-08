@@ -12,7 +12,7 @@ const NAV_ITEMS = [
   { href: 'analytics.html', label: 'Analytics' },
 ];
 
-const COMING_SOON_ITEMS = ['Support Tickets'];
+const COMING_SOON_ITEMS = [];
 
 function requireAdminAuth() {
   const token = localStorage.getItem('quickfit4u_admin_token');
@@ -36,7 +36,7 @@ function renderShell(activePage) {
         ${NAV_ITEMS.map(
           (item) => `<a href="${item.href}" class="${item.href === activePage ? 'active' : ''}">${item.label}</a>`
         ).join('')}
-        <div class="section-label">Coming Soon</div>
+        ${COMING_SOON_ITEMS.length ? `<div class="section-label">Coming Soon</div>` : ''}
         ${COMING_SOON_ITEMS.map(
           (label) => `<a class="disabled" title="Needs its own system built first">${label}<span class="soon-tag">Soon</span></a>`
         ).join('')}

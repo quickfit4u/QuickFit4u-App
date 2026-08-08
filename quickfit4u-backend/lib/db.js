@@ -482,3 +482,9 @@ db.exec(`
     updated_at TEXT
   );
 `);
+
+try {
+  db.exec(`ALTER TABLE complaints ADD COLUMN attachments TEXT`);
+} catch (e) {
+  if (!String(e.message).includes('duplicate column')) throw e;
+}

@@ -55,18 +55,17 @@ router.get('/stats', (req, res) => {
 });
 
 
+// Members only — gym owners have their own dedicated view under Gym Partners,
+// so this list is filtered to role = 'member' by default and never mixes the two.
 router.get('/users', (req, res) => {
-  const { role, search } = req.query;
+  const { search } = req.query;
+  const role = 'member';
   const page = Math.max(1, parseInt(req.query.page, 10) || 1);
   const pageSize = 30;
 
-  let sql = `SELECT u.*, g.name AS gym_name, g.id AS gym_id FROM users u LEFT JOIN gyms g ON g.owner_id = u.id WHERE u.role != 'admin'`;
-  const params = [];
+  let sql = `SELECT u.* FROM users u WHERE u.role = ?`;
+  const params = [role];
 
-  if (role && ['member', 'owner'].includes(role)) {
-    sql += ` AND u.role = ?`;
-    params.push(role);
-  }
   if (search && search.trim()) {
     sql += ` AND (u.name LIKE ? COLLATE NOCASE OR u.email LIKE ? COLLATE NOCASE OR u.phone LIKE ?)`;
     const term = `%${search.trim()}%`;
@@ -89,8 +88,7 @@ router.get('/users', (req, res) => {
       role: u.role,
       gender: u.gender,
       address: u.address,
-      gymId: u.gym_id,
-      gymName: u.gym_name,
+      referredBy: u.referred_by,
       createdAt: u.created_at,
     })),
   });
@@ -338,6 +336,80 @@ router.delete('/reviews/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+
+// ---------- Complaints / feedback (backs public/admin/complaints.html) ----------
+router.get('/complaints', (req, res) => {
+  const { search, status, role } = req.query;
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const pageSize = 30;
+
+  let sql = `SELECT c.*, u.name AS user_name, u.email AS user_email, g.name AS gym_name
+             FROM complaints c
+             JOIN users u ON u.id = c.user_id
+             LEFT JOIN gyms g ON g.id = c.gym_id
+             WHERE 1=1`;
+  const params = [];
+
+  if (status && ['open', 'in_progress', 'resolved'].includes(status)) {
+    sql += ` AND c.status = ?`;
+    params.push(status);
+  }
+  if (role && ['member', 'owner'].includes(role)) {
+    sql += ` AND c.role = ?`;
+    params.push(role);
+  }
+  if (search && search.trim()) {
+    sql += ` AND (u.name LIKE ? COLLATE NOCASE OR u.email LIKE ? COLLATE NOCASE OR c.subject LIKE ? COLLATE NOCASE)`;
+    const term = `%${search.trim()}%`;
+    params.push(term, term, term);
+  }
+
+  const countRow = db.prepare(`SELECT COUNT(*) AS c FROM (${sql})`).get(...params);
+  sql += ` ORDER BY c.created_at DESC LIMIT ? OFFSET ?`;
+  const rows = db.prepare(sql).all(...params, pageSize, (page - 1) * pageSize);
+
+  res.json({
+    total: countRow.c,
+    page,
+    pageSize,
+    complaints: rows.map((c) => ({
+      id: c.id,
+      userName: c.user_name,
+      userEmail: c.user_email,
+      role: c.role,
+      category: c.category,
+      subject: c.subject,
+      message: c.message,
+      gymName: c.gym_name,
+      status: c.status,
+      adminNote: c.admin_note,
+      emailSent: !!c.email_sent,
+      attachments: c.attachments ? JSON.parse(c.attachments) : [],
+      createdAt: c.created_at,
+    })),
+  });
+});
+
+router.patch('/complaints/:id', (req, res) => {
+  const complaint = db.prepare('SELECT id FROM complaints WHERE id = ?').get(req.params.id);
+  if (!complaint) return res.status(404).json({ error: 'Complaint not found.' });
+
+  const { status, adminNote } = req.body || {};
+  if (status && !['open', 'in_progress', 'resolved'].includes(status)) {
+    return res.status(400).json({ error: "status must be 'open', 'in_progress', or 'resolved'." });
+  }
+
+  const now = db.prepare(`SELECT datetime('now') AS now`).get().now;
+  db.prepare(
+    `UPDATE complaints SET
+       status = COALESCE(?, status),
+       admin_note = COALESCE(?, admin_note),
+       updated_at = ?
+     WHERE id = ?`
+  ).run(status || null, adminNote !== undefined ? adminNote : null, now, complaint.id);
+
+  res.json({ ok: true });
+});
 
 router.get('/analytics', (req, res) => {
   const bookingsByDay = db
