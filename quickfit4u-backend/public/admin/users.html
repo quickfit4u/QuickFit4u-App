@@ -48,7 +48,7 @@
             (u) => `<tr>
               <td><strong>${escapeHtml(u.name)}</strong>${u.gender ? '<br><span style="color:var(--ink-soft);font-size:11.5px;">' + escapeHtml(u.gender) + '</span>' : ''}</td>
               <td>${escapeHtml(u.email)}${u.phone ? '<br><span style="color:var(--ink-soft);font-size:11.5px;">' + escapeHtml(u.phone) + '</span>' : ''}</td>
-              <td>${u.referredBy ? escapeHtml(u.referredBy) : '—'}</td>
+              <td>${u.referredCode ? escapeHtml(u.referredCode) : '—'}</td>
               <td>${formatDateTime(u.createdAt)}</td>
             </tr>`
           )
