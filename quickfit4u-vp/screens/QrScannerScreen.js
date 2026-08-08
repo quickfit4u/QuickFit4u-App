@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, PermissionsAndroid, Linking } from 'react-native';
 import { WebView } from 'react-native-webview';
 
 const COLORS = {
@@ -26,7 +26,44 @@ export default function QrScannerScreen({ title, instructions, onBack, onScanned
   const [code, setCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
+  // 'checking' | 'granted' | 'denied'
+  // On Android, react-native-webview will NOT let a page use getUserMedia()
+  // just because the app holds the CAMERA permission — the app also has to
+  // (1) hold the OS runtime permission, and (2) explicitly grant the
+  // WebView's own permission prompt via onPermissionRequest below. Skipping
+  // either step is the classic cause of a silent black-screen scanner: no
+  // exception is thrown, the video element just never receives a stream.
+  const [permState, setPermState] = useState(Platform.OS === 'android' ? 'checking' : 'granted');
   const lockRef = useRef(false);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    (async () => {
+      try {
+        const already = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.CAMERA);
+        if (already) {
+          setPermState('granted');
+          return;
+        }
+        const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA, {
+          title: 'Camera Permission',
+          message: 'QuickFit4u uses your camera to scan QR codes for gym check-in.',
+          buttonPositive: 'Allow',
+          buttonNegative: 'Deny',
+        });
+        setPermState(result === PermissionsAndroid.RESULTS.GRANTED ? 'granted' : 'denied');
+      } catch (e) {
+        setPermState('denied');
+      }
+    })();
+  }, []);
+
+  // Grants the in-page getUserMedia() request. Without this handler,
+  // react-native-webview denies camera/mic permission requests by default
+  // on Android, so the video feed never starts.
+  function handlePermissionRequest(event) {
+    event.grant(event.resources);
+  }
 
   function handleWebViewMessage(event) {
     let msg;
@@ -106,19 +143,45 @@ export default function QrScannerScreen({ title, instructions, onBack, onScanned
     );
   }
 
+  if (permState === 'denied') {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.permTitle}>Camera Access Needed</Text>
+        <Text style={styles.permBody}>
+          QuickFit4u needs camera access to scan QR codes. Please enable it in your phone's app
+          settings.
+        </Text>
+        <TouchableOpacity style={styles.permBtn} onPress={() => Linking.openSettings()}>
+          <Text style={styles.permBtnText}>Open Settings</Text>
+        </TouchableOpacity>
+        {!!onManualCode && (
+          <TouchableOpacity onPress={() => setManualMode(true)} style={{ marginTop: 16 }}>
+            <Text style={styles.backLink}>Enter code manually instead</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity onPress={onBack} style={{ marginTop: 16 }}>
+          <Text style={styles.backLink}>‹ Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.root}>
-      <WebView
-        source={{ html: SCANNER_HTML }}
-        style={StyleSheet.absoluteFillObject}
-        onMessage={handleWebViewMessage}
-        javaScriptEnabled
-        domStorageEnabled
-        allowsInlineMediaPlayback
-        mediaPlaybackRequiresUserAction={false}
-        mediaCapturePermissionGrantType="grant"
-        originWhitelist={['*']}
-      />
+      {permState === 'granted' && (
+        <WebView
+          source={{ html: SCANNER_HTML }}
+          style={StyleSheet.absoluteFillObject}
+          onMessage={handleWebViewMessage}
+          onPermissionRequest={handlePermissionRequest}
+          javaScriptEnabled
+          domStorageEnabled
+          allowsInlineMediaPlayback
+          mediaPlaybackRequiresUserAction={false}
+          mediaCapturePermissionGrantType="grant"
+          originWhitelist={['*']}
+        />
+      )}
 
       <View style={styles.overlay} pointerEvents="box-none">
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
@@ -132,7 +195,9 @@ export default function QrScannerScreen({ title, instructions, onBack, onScanned
           {!cameraReady && (
             <View style={styles.frameLoading}>
               <ActivityIndicator color={COLORS.gold} />
-              <Text style={styles.frameLoadingText}>Starting camera…</Text>
+              <Text style={styles.frameLoadingText}>
+                {permState === 'checking' ? 'Requesting camera permission…' : 'Starting camera…'}
+              </Text>
             </View>
           )}
         </View>
